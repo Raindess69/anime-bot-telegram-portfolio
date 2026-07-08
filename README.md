@@ -1,6 +1,6 @@
 # Anime Telegram Bot
 
-Trilingual (RU / EN / UK) Telegram bot that unifies anime search across seven
+Trilingual (RU / EN / UА) Telegram bot that unifies anime search across seven
 public sources, notifies users about new episodes, and lets them watch them
 without leaving the chat.
 
