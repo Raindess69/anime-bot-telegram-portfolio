@@ -66,7 +66,7 @@ def start_cloudflared_tunnel() -> bool:
         for line in iter(proc.stdout.readline, ""):
             print(line, end="")
             if not https_url:
-                match = re.search(r"https://[a-zA-Z0-9.-]+\.trycloudflare\.com", line)
+                match = re.search(r"https://(?!(?:api|developers|pkg)\.)[a-zA-Z0-9-]+\.trycloudflare\.com", line)
                 if match:
                     https_url = match.group(0)
                     print("\n" + "=" * 50)
@@ -188,20 +188,21 @@ def start_ngrok_tunnel() -> bool:
 
 def run_tunnel_supervisor():
     """Runs tunnel in an automatic supervision loop. Reconnects on disconnection."""
-    requested = sys.argv[1] if len(sys.argv) > 1 else None
+    requested = sys.argv[1] if len(sys.argv) > 1 else "pinggy"
 
     while True:
         try:
-            if requested == "cloudflared" or (not requested and shutil.which("cloudflared")):
-                if start_cloudflared_tunnel():
-                    pass
+            if requested == "cloudflared":
+                if not start_cloudflared_tunnel():
+                    start_pinggy_tunnel()
             elif requested == "ngrok":
                 if not start_ngrok_tunnel():
                     start_pinggy_tunnel()
             else:
-                # Default: try cloudflared first if installed, else pinggy
-                if not start_cloudflared_tunnel():
-                    start_pinggy_tunnel()
+                # Default: pinggy (stable over HTTP CONNECT proxy on port 443)
+                if not start_pinggy_tunnel():
+                    if not start_cloudflared_tunnel():
+                        start_ngrok_tunnel()
         except KeyboardInterrupt:
             print("\n🛑 Tunnel stopped by user.")
             break
