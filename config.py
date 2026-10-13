@@ -1,4 +1,4 @@
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     # Optional: comma-separated proxy pool for Jikan requests (host:port:user:pass,
     # or already-full URLs). Without it, requests go out directly as before.
     jikan_proxies: str = Field("", alias="JIKAN_PROXIES")
-    # Mini App settings
-    mini_app_url: str = Field("https://enjoyanime.app", alias="MINI_APP_URL")
+    # Mini App settings (accepts either MINI_APP_URL or WEB_APP_URL)
+    mini_app_url: str = Field("https://enjoyanime.app", validation_alias=AliasChoices("MINI_APP_URL", "WEB_APP_URL"))
     web_host: str = Field("0.0.0.0", alias="WEB_HOST")
     web_port: int = Field(8080, alias="WEB_PORT")
 

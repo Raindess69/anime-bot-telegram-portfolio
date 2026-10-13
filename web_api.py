@@ -1,6 +1,14 @@
 import logging
+import os
 from pathlib import Path
 from typing import Optional
+
+# Fix any invalid wildcards or spaces in NO_PROXY from sandbox
+for _key in ("NO_PROXY", "no_proxy"):
+    _val = os.getenv(_key)
+    if _val:
+        _cleaned = [item.strip().lstrip("*.") for item in _val.split(",") if item.strip()]
+        os.environ[_key] = ",".join(_cleaned)
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
