@@ -113,6 +113,7 @@ class StatusUpdateRequest(BaseModel):
     title: str = ""
     lang: str = "ru"
     status: str
+    image_url: str = ""
 
 
 class EpisodeUpdateRequest(BaseModel):
@@ -121,6 +122,7 @@ class EpisodeUpdateRequest(BaseModel):
     title: str = ""
     lang: str = "ru"
     episode: int
+    image_url: str = ""
 
 
 class FavoriteToggleRequest(BaseModel):
@@ -128,6 +130,7 @@ class FavoriteToggleRequest(BaseModel):
     mal_id: int
     title: str = ""
     lang: str = "ru"
+    image_url: str = ""
 
 
 class PlaybackProgressRequest(BaseModel):
@@ -139,6 +142,7 @@ class PlaybackProgressRequest(BaseModel):
     position: int = 0
     duration: int = 0
     completed: bool = False
+    image_url: str = ""
 
 
 @app.get("/api/health")
@@ -147,15 +151,30 @@ async def health_check():
 
 
 @app.get("/api/feed")
-async def get_feed(lang: str = "ru"):
-    """Returns curated collections for the main page."""
+async def get_feed(
+    lang: str = "ru",
+    user_id: Optional[int] = None,
+    user: dict = Depends(get_current_user),
+):
+    """Returns curated collections for the main page + continue watching."""
     try:
         airing = await shikimori.top_anime(filter_="airing", limit=12)
         popular = await shikimori.top_anime(filter_="bypopularity", limit=12)
         ranked = await shikimori.top_anime(filter_=None, limit=12)
         hero = popular[0] if popular else (airing[0] if airing else None)
+
+        target_id = user["id"] if user.get("id") else (user_id or 0)
+        continue_watching = []
+        if target_id:
+            try:
+                watching_items = await user_titles.list_by_status(target_id, "watching")
+                continue_watching = watching_items[:8]
+            except Exception as e:
+                _log.warning("Continue watching fetch failed: %s", e)
+
         return {
             "hero": hero,
+            "continue_watching": continue_watching,
             "airing": airing,
             "popular": popular,
             "top": ranked,
@@ -213,7 +232,11 @@ async def get_random():
 
 
 @app.get("/api/anime/{anime_id}")
-async def get_anime_details(anime_id: int, lang: str = "ru"):
+async def get_anime_details(
+    anime_id: int,
+    lang: str = "ru",
+    translation_id: Optional[int] = None,
+):
     """Get rich title info with embedded Kodik player & episodes."""
     try:
         full = await shikimori.get_by_id(anime_id)
@@ -224,7 +247,11 @@ async def get_anime_details(anime_id: int, lang: str = "ru"):
         player_info = None
         if kodik.enabled():
             try:
-                player_info = await kodik.get_player(shikimori_id=anime_id, mal_id=anime_id)
+                player_info = await kodik.get_player(
+                    shikimori_id=anime_id,
+                    mal_id=anime_id,
+                    translation_id=translation_id,
+                )
             except Exception as e:
                 _log.info("Kodik player enrich failed for %s: %s", anime_id, e)
 
@@ -237,6 +264,26 @@ async def get_anime_details(anime_id: int, lang: str = "ru"):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/player/{anime_id}")
+async def get_player_stream(
+    anime_id: int,
+    translation_id: Optional[int] = None,
+):
+    """Fast player-only stream URL with translation/voice switching."""
+    if not kodik.enabled():
+        return {"url": None, "episodes": {}, "translations": []}
+    try:
+        player_info = await kodik.get_player(
+            shikimori_id=anime_id,
+            mal_id=anime_id,
+            translation_id=translation_id,
+        )
+        return player_info or {"url": None, "episodes": {}, "translations": []}
+    except Exception as e:
+        _log.warning("Player stream error: %s", e)
+        return {"url": None, "episodes": {}, "translations": []}
+
+
 @app.get("/api/user/me")
 async def get_me(user: dict = Depends(get_current_user)):
     """Returns the verified Telegram user profile."""
@@ -244,6 +291,22 @@ async def get_me(user: dict = Depends(get_current_user)):
         "authenticated": not user.get("is_anonymous", False),
         "user": user,
     }
+
+
+@app.get("/api/user/stats")
+async def get_user_statistics(
+    user_id: Optional[int] = None,
+    user: dict = Depends(get_current_user),
+):
+    """Returns user library counts and total watched episodes."""
+    target_id = user["id"] if user.get("id") else (user_id or 0)
+    if not target_id:
+        return {"watching": 0, "completed": 0, "plan": 0, "dropped": 0, "favorites": 0, "episodes_watched": 0}
+    try:
+        return await user_titles.get_stats(target_id)
+    except Exception as e:
+        _log.exception("Stats error: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/library")
@@ -297,6 +360,7 @@ async def update_library_status(
             title=req.title,
             lang=req.lang,
             status=req.status,
+            image_url=req.image_url,
         )
         return {"ok": True, "status": req.status, "user_id": target_id}
     except Exception as e:
@@ -319,6 +383,7 @@ async def update_library_episode(
             title=req.title,
             lang=req.lang,
             episode=req.episode,
+            image_url=req.image_url,
         )
         return {"ok": True, "episode": req.episode, "user_id": target_id}
     except Exception as e:
@@ -340,6 +405,7 @@ async def toggle_library_favorite(
             mal_id=req.mal_id,
             title=req.title,
             lang=req.lang,
+            image_url=req.image_url,
         )
         return {"ok": True, "is_favorite": new_fav, "user_id": target_id}
     except Exception as e:
@@ -368,6 +434,7 @@ async def save_playback_progress(
                 title=req.title,
                 lang=req.lang,
                 episode=req.episode,
+                image_url=req.image_url,
             )
         return {
             "ok": True,

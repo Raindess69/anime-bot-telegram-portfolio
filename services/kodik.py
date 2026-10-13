@@ -104,11 +104,12 @@ async def get_player(
     *,
     mal_id: int | None = None,
     shikimori_id: int | None = None,
+    translation_id: int | None = None,
 ) -> dict | None:
     """Full player payload for a card: base URL + per-episode URLs + translation.
 
-    Returns {url, episodes: {n: url}, last_ep, translation} or None.
-    Picks the translation with the highest last_episode (ties → dubs over subs).
+    Returns {url, episodes: {n: url}, last_ep, translation, translation_id, translations} or None.
+    If translation_id is specified, picks that variant; otherwise picks the highest last_episode.
     """
     if not enabled() or (not mal_id and not shikimori_id):
         return None
@@ -141,21 +142,41 @@ async def get_player(
         voice_bonus = 1 if (trans.get("type") == "voice") else 0
         return (last_ep, voice_bonus)
 
-    best = max(results, key=_score)
-    last_ep = _int_or_zero(best.get("last_episode") or best.get("episodes_count"))
-    base_url = _norm_link(best.get("link") or "")
+    # Collect all available translations
+    available_translations = []
+    seen_trans_ids = set()
+    for item in results:
+        trans_obj = item.get("translation") or {}
+        t_id = trans_obj.get("id")
+        t_title = trans_obj.get("title")
+        if t_id and t_title and t_id not in seen_trans_ids:
+            seen_trans_ids.add(t_id)
+            available_translations.append({
+                "id": t_id,
+                "title": t_title,
+                "type": trans_obj.get("type") or "voice",
+                "episodes_count": _int_or_zero(item.get("last_episode") or item.get("episodes_count")),
+            })
+
+    # Pick specific translation if requested, otherwise best by score
+    chosen = None
+    if translation_id:
+        for item in results:
+            if (item.get("translation") or {}).get("id") == translation_id:
+                chosen = item
+                break
+
+    if not chosen:
+        chosen = max(results, key=_score)
+
+    last_ep = _int_or_zero(chosen.get("last_episode") or chosen.get("episodes_count"))
+    base_url = _norm_link(chosen.get("link") or "")
     if not base_url:
         return None
 
     episodes: dict[int, str] = {}
-    # Kodik returns per-episode URLs either under `seasons.{n}.episodes` or at
-    # the top-level `episodes` map, depending on whether the title has seasons.
-    raw_seasons = best.get("seasons") or {}
+    raw_seasons = chosen.get("seasons") or {}
     if isinstance(raw_seasons, dict) and raw_seasons:
-        # Multi-season titles: flatten the first (or only) season's episodes.
-        # We deliberately ignore later seasons — the user comes to this card
-        # for the current one, and Kodik usually splits seasons into separate
-        # results anyway.
         for season_data in raw_seasons.values():
             eps = (season_data or {}).get("episodes") or {}
             for k, v in eps.items():
@@ -163,17 +184,22 @@ async def get_player(
             if episodes:
                 break
     if not episodes:
-        raw_eps = best.get("episodes") or {}
+        raw_eps = chosen.get("episodes") or {}
         if isinstance(raw_eps, dict):
             for k, v in raw_eps.items():
                 _put_ep(episodes, k, v)
 
-    translation = (best.get("translation") or {}).get("title") or ""
+    curr_trans = chosen.get("translation") or {}
+    translation = curr_trans.get("title") or ""
+    curr_trans_id = curr_trans.get("id")
+
     return {
         "url": base_url,
         "episodes": episodes,
         "last_ep": last_ep,
         "translation": translation,
+        "translation_id": curr_trans_id,
+        "translations": available_translations,
     }
 
 

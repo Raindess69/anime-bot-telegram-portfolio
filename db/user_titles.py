@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS user_titles (
     current_episode INTEGER NOT NULL DEFAULT 0,
     is_favorite INTEGER NOT NULL DEFAULT 0,
     updated_at INTEGER NOT NULL,
+    image_url TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (user_id, mal_id)
 );
 CREATE INDEX IF NOT EXISTS idx_user_titles_user_status ON user_titles(user_id, status);
@@ -33,6 +34,10 @@ CREATE INDEX IF NOT EXISTS idx_user_titles_user_status ON user_titles(user_id, s
 async def init_user_titles() -> None:
     async with aiosqlite.connect(settings.db_path) as db:
         await db.executescript(_SCHEMA)
+        try:
+            await db.execute("ALTER TABLE user_titles ADD COLUMN image_url TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass
         await db.commit()
 
 
@@ -46,7 +51,7 @@ def next_status(current: str | None) -> str:
 async def get(user_id: int, mal_id: int) -> dict | None:
     async with aiosqlite.connect(settings.db_path) as db:
         async with db.execute(
-            """SELECT title, lang, status, current_episode, is_favorite, updated_at
+            """SELECT title, lang, status, current_episode, is_favorite, updated_at, image_url
                FROM user_titles WHERE user_id = ? AND mal_id = ?""",
             (user_id, mal_id),
         ) as cur:
@@ -56,19 +61,28 @@ async def get(user_id: int, mal_id: int) -> dict | None:
     return {
         "title": row[0], "lang": row[1], "status": row[2],
         "current_episode": row[3], "is_favorite": bool(row[4]), "updated_at": row[5],
+        "image_url": row[6] if len(row) > 6 and row[6] else "",
     }
 
 
-async def _ensure_row(db: aiosqlite.Connection, user_id: int, mal_id: int, title: str, lang: str) -> None:
+async def _ensure_row(
+    db: aiosqlite.Connection,
+    user_id: int,
+    mal_id: int,
+    title: str,
+    lang: str,
+    image_url: str = "",
+) -> None:
     now = int(time.time())
     await db.execute(
-        """INSERT INTO user_titles (user_id, mal_id, title, lang, updated_at)
-           VALUES (?, ?, ?, ?, ?)
+        """INSERT INTO user_titles (user_id, mal_id, title, lang, image_url, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)
            ON CONFLICT(user_id, mal_id) DO UPDATE SET
                title = CASE WHEN excluded.title != '' THEN excluded.title ELSE user_titles.title END,
+               image_url = CASE WHEN excluded.image_url != '' THEN excluded.image_url ELSE user_titles.image_url END,
                lang = excluded.lang,
                updated_at = excluded.updated_at""",
-        (user_id, mal_id, title, lang, now),
+        (user_id, mal_id, title, lang, image_url, now),
     )
 
 
@@ -84,12 +98,12 @@ async def get_title_state(user_id: int, mal_id: int) -> dict:
     }
 
 
-async def set_status(user_id: int, mal_id: int, title: str, lang: str, status: str) -> None:
+async def set_status(user_id: int, mal_id: int, title: str, lang: str, status: str, image_url: str = "") -> None:
     if status not in STATUSES:
         raise ValueError(f"invalid status: {status}")
     now = int(time.time())
     async with aiosqlite.connect(settings.db_path) as db:
-        await _ensure_row(db, user_id, mal_id, title, lang)
+        await _ensure_row(db, user_id, mal_id, title, lang, image_url)
         await db.execute(
             "UPDATE user_titles SET status = ?, updated_at = ? WHERE user_id = ? AND mal_id = ?",
             (status, now, user_id, mal_id),
@@ -97,20 +111,20 @@ async def set_status(user_id: int, mal_id: int, title: str, lang: str, status: s
         await db.commit()
 
 
-async def cycle_status(user_id: int, mal_id: int, title: str, lang: str) -> str:
+async def cycle_status(user_id: int, mal_id: int, title: str, lang: str, image_url: str = "") -> str:
     """Advance to the next status in the cycle and return the new value."""
     current = await get(user_id, mal_id)
     new_status = next_status(current["status"] if current else None)
-    await set_status(user_id, mal_id, title, lang, new_status)
+    await set_status(user_id, mal_id, title, lang, new_status, image_url)
     return new_status
 
 
-async def set_episode(user_id: int, mal_id: int, title: str, lang: str, episode: int) -> None:
+async def set_episode(user_id: int, mal_id: int, title: str, lang: str, episode: int, image_url: str = "") -> None:
     """Marks progress. Auto-flips status plan → watching (you can't be 'planning'
     once you've actually watched an episode)."""
     now = int(time.time())
     async with aiosqlite.connect(settings.db_path) as db:
-        await _ensure_row(db, user_id, mal_id, title, lang)
+        await _ensure_row(db, user_id, mal_id, title, lang, image_url)
         await db.execute(
             """UPDATE user_titles SET
                  current_episode = ?,
@@ -122,11 +136,11 @@ async def set_episode(user_id: int, mal_id: int, title: str, lang: str, episode:
         await db.commit()
 
 
-async def toggle_favorite(user_id: int, mal_id: int, title: str, lang: str) -> bool:
+async def toggle_favorite(user_id: int, mal_id: int, title: str, lang: str, image_url: str = "") -> bool:
     """Returns the new favorite state."""
     now = int(time.time())
     async with aiosqlite.connect(settings.db_path) as db:
-        await _ensure_row(db, user_id, mal_id, title, lang)
+        await _ensure_row(db, user_id, mal_id, title, lang, image_url)
         async with db.execute(
             "SELECT is_favorite FROM user_titles WHERE user_id = ? AND mal_id = ?",
             (user_id, mal_id),
@@ -144,11 +158,11 @@ async def toggle_favorite(user_id: int, mal_id: int, title: str, lang: str) -> b
 async def list_by_status(user_id: int, status: str | None = None) -> list[dict]:
     async with aiosqlite.connect(settings.db_path) as db:
         if status:
-            query = """SELECT mal_id, title, lang, status, current_episode, is_favorite, updated_at
+            query = """SELECT mal_id, title, lang, status, current_episode, is_favorite, updated_at, image_url
                         FROM user_titles WHERE user_id = ? AND status = ? ORDER BY updated_at DESC"""
             params = (user_id, status)
         else:
-            query = """SELECT mal_id, title, lang, status, current_episode, is_favorite, updated_at
+            query = """SELECT mal_id, title, lang, status, current_episode, is_favorite, updated_at, image_url
                         FROM user_titles WHERE user_id = ? ORDER BY updated_at DESC"""
             params = (user_id,)
         async with db.execute(query, params) as cur:
@@ -157,6 +171,7 @@ async def list_by_status(user_id: int, status: str | None = None) -> list[dict]:
         {
             "mal_id": r[0], "title": r[1], "lang": r[2], "status": r[3],
             "current_episode": r[4], "is_favorite": bool(r[5]), "updated_at": r[6],
+            "image_url": r[7] if len(r) > 7 and r[7] else "",
         }
         for r in rows
     ]
@@ -170,7 +185,7 @@ async def export_all(user_id: int) -> list[dict]:
 async def list_favorites(user_id: int) -> list[dict]:
     async with aiosqlite.connect(settings.db_path) as db:
         async with db.execute(
-            """SELECT mal_id, title, lang, status, current_episode, is_favorite, updated_at
+            """SELECT mal_id, title, lang, status, current_episode, is_favorite, updated_at, image_url
                FROM user_titles WHERE user_id = ? AND is_favorite = 1 ORDER BY updated_at DESC""",
             (user_id,),
         ) as cur:
@@ -179,6 +194,7 @@ async def list_favorites(user_id: int) -> list[dict]:
         {
             "mal_id": r[0], "title": r[1], "lang": r[2], "status": r[3],
             "current_episode": r[4], "is_favorite": bool(r[5]), "updated_at": r[6],
+            "image_url": r[7] if len(r) > 7 and r[7] else "",
         }
         for r in rows
     ]

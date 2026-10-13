@@ -190,7 +190,7 @@
           <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
           <span class="text-[11px]">Рандом</span>
         </button>
-        <div class="flex items-center gap-1.5 bg-white/5 border border-white/10 px-2.5 py-1.5 rounded-xl text-xs">
+        <div onclick="openProfileModal()" class="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 border border-white/10 px-2.5 py-1.5 rounded-xl text-xs cursor-pointer active:scale-95 transition" title="Открыть профиль и статистику">
           <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
           <span id="user-name" class="font-semibold text-slate-200 text-xs">Гость</span>
         </div>
@@ -248,6 +248,18 @@
         </div>
         <img id="hero-img" src="" alt="Hero" class="w-full h-64 object-cover object-center group-hover:scale-105 transition-all duration-700" onerror="imgFallback(this)">
       </div>
+
+      <!-- CONTINUE WATCHING ROW -->
+      <section id="section-continue-watching" class="hidden space-y-3">
+        <div class="flex items-center justify-between px-1">
+          <div class="flex items-center gap-2">
+            <span class="w-1.5 h-4 rounded-full bg-gradient-to-b from-indigo-500 to-pink-500"></span>
+            <h3 class="text-sm font-extrabold text-white tracking-tight">Продолжить просмотр</h3>
+          </div>
+          <button onclick="switchTab('library')" class="text-[11px] font-semibold text-indigo-400 hover:text-indigo-300 transition">Все в списке</button>
+        </div>
+        <div id="continue-watching-list" class="flex gap-3 overflow-x-auto no-scrollbar pb-1"></div>
+      </section>
 
       <!-- FILTERED CATEGORY GRID (IF GENRE SELECTED) -->
       <div id="vibe-results-section" class="hidden space-y-3">
@@ -316,6 +328,19 @@
           class="w-full bg-dark-850 border border-white/10 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 rounded-2xl px-4 py-3.5 pl-11 text-sm font-medium text-white placeholder-slate-500 outline-none transition shadow-inner"
         >
         <svg class="w-4 h-4 text-slate-400 absolute left-4 top-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </div>
+
+      <!-- QUICK GENRE CHIPS ON SEARCH -->
+      <div class="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5 text-xs font-semibold">
+        <button onclick="setSearchGenre('')" class="search-genre-chip shrink-0 px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-bold transition active:scale-95" data-genre="">Все</button>
+        <button onclick="setSearchGenre('action')" class="search-genre-chip shrink-0 px-3 py-1.5 rounded-xl bg-dark-850 border border-white/10 text-slate-300 hover:text-white transition active:scale-95" data-genre="action">⚔️ Экшен</button>
+        <button onclick="setSearchGenre('comedy')" class="search-genre-chip shrink-0 px-3 py-1.5 rounded-xl bg-dark-850 border border-white/10 text-slate-300 hover:text-white transition active:scale-95" data-genre="comedy">🎭 Комедия</button>
+        <button onclick="setSearchGenre('romance')" class="search-genre-chip shrink-0 px-3 py-1.5 rounded-xl bg-dark-850 border border-white/10 text-slate-300 hover:text-white transition active:scale-95" data-genre="romance">💖 Романтика</button>
+        <button onclick="setSearchGenre('fantasy')" class="search-genre-chip shrink-0 px-3 py-1.5 rounded-xl bg-dark-850 border border-white/10 text-slate-300 hover:text-white transition active:scale-95" data-genre="fantasy">🧙 Фэнтези</button>
+        <button onclick="setSearchGenre('shounen')" class="search-genre-chip shrink-0 px-3 py-1.5 rounded-xl bg-dark-850 border border-white/10 text-slate-300 hover:text-white transition active:scale-95" data-genre="shounen">🔥 Сёнен</button>
+        <button onclick="setSearchGenre('mystery')" class="search-genre-chip shrink-0 px-3 py-1.5 rounded-xl bg-dark-850 border border-white/10 text-slate-300 hover:text-white transition active:scale-95" data-genre="mystery">🔍 Детектив</button>
+        <button onclick="setSearchGenre('drama')" class="search-genre-chip shrink-0 px-3 py-1.5 rounded-xl bg-dark-850 border border-white/10 text-slate-300 hover:text-white transition active:scale-95" data-genre="drama">💧 Драма</button>
+        <button onclick="setSearchGenre('slice_of_life')" class="search-genre-chip shrink-0 px-3 py-1.5 rounded-xl bg-dark-850 border border-white/10 text-slate-300 hover:text-white transition active:scale-95" data-genre="slice_of_life">☕ Повседневность</button>
       </div>
 
       <div id="search-status" class="flex items-center gap-2 text-xs font-semibold text-indigo-400 px-1 hidden">
@@ -408,6 +433,70 @@
   </div>
 
   <!-- ========================================== -->
+  <!-- PROFILE & STATS MODAL DRAWER -->
+  <!-- ========================================== -->
+  <div id="profile-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex flex-col justify-end transition-all">
+    <div class="bg-dark-900 border-t border-white/10 w-full max-h-[85vh] overflow-y-auto rounded-t-[32px] p-5 space-y-5 shadow-2xl">
+      <div class="flex items-center justify-between pb-3 border-b border-white/10">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-violet-600 to-pink-500 p-0.5 shadow-glow-indigo flex items-center justify-center">
+            <div class="w-full h-full bg-dark-950 rounded-[14px] flex items-center justify-center font-black text-sm text-white" id="profile-avatar-letter">
+              EA
+            </div>
+          </div>
+          <div>
+            <h3 id="profile-name" class="text-sm font-extrabold text-white">Пользователь</h3>
+            <p id="profile-status" class="text-[11px] text-indigo-400 font-semibold">EnjoyAnime Profile</p>
+          </div>
+        </div>
+        <button onclick="closeProfileModal()" class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-slate-300 active:scale-95 transition">✕</button>
+      </div>
+
+      <!-- STATS METRICS GRID -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+        <div class="bg-dark-850 border border-white/5 rounded-2xl p-3.5 space-y-1">
+          <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Серий просмотрено</span>
+          <div id="stat-episodes" class="text-xl font-black text-white">0</div>
+        </div>
+        <div class="bg-dark-850 border border-white/5 rounded-2xl p-3.5 space-y-1 cursor-pointer active:scale-95 transition" onclick="closeProfileModal(); switchTab('library'); loadLibrary('watching')">
+          <span class="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">Смотрю сейчас</span>
+          <div id="stat-watching" class="text-xl font-black text-indigo-300">0</div>
+        </div>
+        <div class="bg-dark-850 border border-white/5 rounded-2xl p-3.5 space-y-1 cursor-pointer active:scale-95 transition" onclick="closeProfileModal(); switchTab('library'); loadLibrary('plan')">
+          <span class="text-[10px] font-bold text-amber-400 uppercase tracking-wider">В планах</span>
+          <div id="stat-plan" class="text-xl font-black text-amber-300">0</div>
+        </div>
+        <div class="bg-dark-850 border border-white/5 rounded-2xl p-3.5 space-y-1 cursor-pointer active:scale-95 transition" onclick="closeProfileModal(); switchTab('library'); loadLibrary('completed')">
+          <span class="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Просмотрено</span>
+          <div id="stat-completed" class="text-xl font-black text-emerald-300">0</div>
+        </div>
+        <div class="bg-dark-850 border border-white/5 rounded-2xl p-3.5 space-y-1 cursor-pointer active:scale-95 transition col-span-2 sm:col-span-1" onclick="closeProfileModal(); switchTab('library')">
+          <span class="text-[10px] font-bold text-pink-400 uppercase tracking-wider">В избранном</span>
+          <div id="stat-favorites" class="text-xl font-black text-pink-300">0</div>
+        </div>
+      </div>
+
+      <!-- QUICK SHORTCUTS -->
+      <div class="space-y-2 pt-2">
+        <button onclick="closeProfileModal(); switchTab('library')" class="w-full py-3 px-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-xs font-bold flex items-center justify-between transition active:scale-98">
+          <span class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+            Перейти в «Мой список»
+          </span>
+          <svg class="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+        <button onclick="closeProfileModal(); rollRandom()" class="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-xs font-bold flex items-center justify-between transition shadow-glow-indigo active:scale-98">
+          <span class="flex items-center gap-2">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            Открыть случайное аниме
+          </span>
+          <svg class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
   <!-- DETAIL & VIDEO PLAYER DRAWER MODAL -->
   <!-- ========================================== -->
   <div id="detail-modal" class="fixed inset-0 z-50 bg-black/90 backdrop-blur-xl hidden flex flex-col justify-end transition-all duration-300">
@@ -424,6 +513,18 @@
       <!-- CINEMATIC VIDEO PLAYER IFRAME -->
       <div id="player-container" class="w-full aspect-video bg-black rounded-2xl overflow-hidden border border-white/15 relative shadow-glow-indigo hidden">
         <iframe id="video-frame" src="" class="w-full h-full border-0" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
+      </div>
+
+      <!-- VOICE / TRANSLATION SELECTOR -->
+      <div id="voice-wrapper" class="hidden space-y-2">
+        <div class="flex items-center justify-between text-xs">
+          <span class="font-bold text-white flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-pink-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+            Озвучка и перевод:
+          </span>
+          <span id="player-voice" class="text-[11px] font-semibold text-indigo-400 bg-indigo-500/10 px-2.5 py-0.5 rounded-full border border-indigo-500/20">Стандартная</span>
+        </div>
+        <div id="voice-pills" class="flex gap-2 overflow-x-auto no-scrollbar py-0.5 text-xs"></div>
       </div>
 
       <!-- EPISODE SELECTOR PILLS -->
@@ -583,7 +684,7 @@
     // FEED
     async function loadFeed() {
       try {
-        const res = await fetch('/api/feed');
+        const res = await apiFetch(`/api/feed?user_id=${user.id}`);
         const data = await res.json();
         
         if (data.airing && data.airing.length > 0) {
@@ -599,6 +700,30 @@
           heroImg.src = hero.image_url;
           document.getElementById('hero-subtitle').textContent = hero.year ? `${hero.year} · Нажмите, чтобы открыть` : 'Нажмите, чтобы открыть плеер';
           document.getElementById('hero-banner').onclick = () => openCard(hero.shikimori_id || hero.mal_id);
+        }
+
+        // Render Continue Watching
+        const contSection = document.getElementById('section-continue-watching');
+        const contList = document.getElementById('continue-watching-list');
+        if (data.continue_watching && data.continue_watching.length > 0) {
+          contSection.classList.remove('hidden');
+          contList.innerHTML = data.continue_watching.map(item => `
+            <div class="glass-card rounded-2xl p-2.5 flex gap-3 min-w-[250px] max-w-[290px] shrink-0 cursor-pointer active:scale-95 transition group" onclick="openCard(${item.mal_id})">
+              <img src="${item.image_url || FALLBACK_POSTER}" class="w-16 h-24 object-cover rounded-xl shrink-0 border border-white/10" onerror="imgFallback(this)">
+              <div class="flex flex-col justify-between py-0.5 overflow-hidden flex-1">
+                <div>
+                  <span class="text-[10px] font-extrabold text-indigo-400 uppercase tracking-wider">Серия ${item.current_episode || 1}</span>
+                  <h4 class="text-xs font-bold text-white line-clamp-2 group-hover:text-indigo-300 transition mt-0.5">${item.title}</h4>
+                </div>
+                <div class="flex items-center gap-1.5 text-[11px] text-white font-bold bg-white/10 group-hover:bg-indigo-600 px-2.5 py-1 rounded-xl transition w-fit">
+                  <svg class="w-3 h-3 fill-white" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  <span>Смотреть</span>
+                </div>
+              </div>
+            </div>
+          `).join('');
+        } else {
+          contSection.classList.add('hidden');
         }
 
         renderCarousel('feed-airing', data.airing || []);
@@ -857,24 +982,35 @@
           videoFrame.src = data.kodik.url;
           document.getElementById('player-voice').textContent = data.kodik.translation || 'Стандартная';
 
+          // Translations / Voice Acting
+          const voiceWrapper = document.getElementById('voice-wrapper');
+          const voicePills = document.getElementById('voice-pills');
+          if (data.kodik.translations && data.kodik.translations.length > 1) {
+            voiceWrapper.classList.remove('hidden');
+            voicePills.innerHTML = data.kodik.translations.map(t => `
+              <button 
+                id="voice-pill-${t.id}"
+                class="voice-pill shrink-0 px-3 py-1.5 rounded-xl ${t.id === data.kodik.translation_id ? 'bg-gradient-to-tr from-violet-600 to-indigo-600 text-white font-bold shadow-glow-indigo' : 'bg-white/5 border border-white/10 text-slate-300'} text-xs active:scale-95 transition"
+                onclick="switchTranslation(${data.shikimori_id || data.mal_id}, ${t.id})"
+              >
+                ${t.title} <span class="text-[10px] opacity-75">(${t.episodes_count || 0})</span>
+              </button>
+            `).join('');
+          } else {
+            voiceWrapper.classList.add('hidden');
+          }
+
           if (data.kodik.episodes && Object.keys(data.kodik.episodes).length > 0) {
             epWrapper.classList.remove('hidden');
             const epKeys = Object.keys(data.kodik.episodes).map(Number).sort((a,b)=>a-b);
             currentPlayingEpisode = epKeys[0] || 1;
-            epList.innerHTML = epKeys.map((epNum, idx) => `
-              <button 
-                id="ep-btn-${epNum}"
-                class="ep-btn px-3 py-1.5 rounded-xl ${idx === 0 ? 'bg-gradient-to-tr from-violet-600 to-indigo-600 text-white border-indigo-400 shadow-glow-indigo' : 'bg-white/5 border border-white/10 text-slate-200'} text-xs font-bold hover:bg-indigo-600 hover:text-white transition active:scale-95"
-                onclick="changeEpisode('${data.kodik.episodes[epNum]}', ${epNum})"
-              >
-                ${epNum}
-              </button>
-            `).join('');
+            renderEpisodeButtons(data.kodik.episodes);
           } else {
             epWrapper.classList.add('hidden');
           }
         } else {
           playerContainer.classList.add('hidden');
+          document.getElementById('voice-wrapper').classList.add('hidden');
           epWrapper.classList.add('hidden');
         }
 
@@ -899,6 +1035,51 @@
 
       } catch (e) {
         console.error('Card load error:', e);
+      }
+    }
+
+    function renderEpisodeButtons(episodesMap) {
+      const epList = document.getElementById('episodes-list');
+      const epKeys = Object.keys(episodesMap).map(Number).sort((a,b)=>a-b);
+      epList.innerHTML = epKeys.map((epNum, idx) => `
+        <button 
+          id="ep-btn-${epNum}"
+          class="ep-btn px-3 py-1.5 rounded-xl ${epNum === currentPlayingEpisode ? 'bg-gradient-to-tr from-violet-600 to-indigo-600 text-white border-indigo-400 shadow-glow-indigo' : 'bg-white/5 border border-white/10 text-slate-200'} text-xs font-bold hover:bg-indigo-600 hover:text-white transition active:scale-95"
+          onclick="changeEpisode('${episodesMap[epNum]}', ${epNum})"
+        >
+          ${epNum}
+        </button>
+      `).join('');
+    }
+
+    async function switchTranslation(animeId, transId) {
+      haptic();
+      try {
+        const res = await apiFetch(`/api/player/${animeId}?translation_id=${transId}`);
+        const playerInfo = await res.json();
+        if (!playerInfo || !playerInfo.url) return;
+
+        if (currentCard) {
+          currentCard.kodik = playerInfo;
+        }
+        document.getElementById('video-frame').src = playerInfo.url;
+        document.getElementById('player-voice').textContent = playerInfo.translation || 'Стандартная';
+
+        document.querySelectorAll('.voice-pill').forEach(b => {
+          b.className = 'voice-pill shrink-0 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-slate-300 text-xs active:scale-95 transition';
+        });
+        const activePill = document.getElementById(`voice-pill-${transId}`);
+        if (activePill) {
+          activePill.className = 'voice-pill shrink-0 px-3 py-1.5 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 text-white font-bold shadow-glow-indigo text-xs active:scale-95 transition';
+        }
+
+        if (playerInfo.episodes && Object.keys(playerInfo.episodes).length > 0) {
+          document.getElementById('episodes-wrapper').classList.remove('hidden');
+          renderEpisodeButtons(playerInfo.episodes);
+        }
+        showToast(`Озвучка: ${playerInfo.translation || 'выбрана'} 🎙️`);
+      } catch (e) {
+        console.error('Switch translation error:', e);
       }
     }
 
@@ -930,7 +1111,8 @@
             mal_id: currentCard.shikimori_id || currentCard.mal_id,
             title: currentCard.title_ru || currentCard.title_en,
             lang: 'ru',
-            episode: epNum
+            episode: epNum,
+            image_url: currentCard.image_url || ''
           })
         }).catch(console.error);
       }
@@ -984,7 +1166,8 @@
             episode: currentPlayingEpisode,
             position: Math.floor(currentTime),
             duration: Math.floor(duration),
-            completed: true
+            completed: true,
+            image_url: currentCard.image_url || ''
           })
         }).catch(console.error);
 
@@ -1007,7 +1190,8 @@
               episode: currentPlayingEpisode,
               position: Math.floor(currentTime),
               duration: Math.floor(duration),
-              completed: false
+              completed: false,
+              image_url: currentCard.image_url || ''
             })
           }).catch(console.error);
         }
@@ -1019,6 +1203,74 @@
       document.getElementById('detail-modal').classList.add('hidden');
       document.getElementById('video-frame').src = '';
     };
+
+    // User Profile Modal Drawer
+    async function openProfileModal() {
+      haptic();
+      const m = document.getElementById('profile-modal');
+      m.classList.remove('hidden');
+
+      const firstName = user.first_name || 'Пользователь';
+      document.getElementById('profile-name').textContent = firstName;
+      document.getElementById('profile-avatar-letter').textContent = firstName.charAt(0).toUpperCase();
+
+      try {
+        const res = await apiFetch(`/api/user/stats?user_id=${user.id}`);
+        const stats = await res.json();
+        document.getElementById('stat-episodes').textContent = stats.episodes_watched || 0;
+        document.getElementById('stat-watching').textContent = stats.watching || 0;
+        document.getElementById('stat-plan').textContent = stats.plan || 0;
+        document.getElementById('stat-completed').textContent = stats.completed || 0;
+        document.getElementById('stat-favorites').textContent = stats.favorites || 0;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function closeProfileModal() {
+      haptic();
+      document.getElementById('profile-modal').classList.add('hidden');
+    }
+
+    // Genre Filter Chips on Search Tab
+    function setSearchGenre(genre) {
+      haptic();
+      document.querySelectorAll('.search-genre-chip').forEach(b => {
+        if (b.dataset.genre === genre) {
+          b.className = 'search-genre-chip shrink-0 px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-bold transition active:scale-95';
+        } else {
+          b.className = 'search-genre-chip shrink-0 px-3 py-1.5 rounded-xl bg-dark-850 border border-white/10 text-slate-300 hover:text-white transition active:scale-95';
+        }
+      });
+
+      if (!genre) {
+        document.getElementById('search-input').value = '';
+        document.getElementById('search-results').innerHTML = '';
+        return;
+      }
+
+      selectedVibeGenre = genre;
+      performGenreSearch(genre);
+    }
+
+    async function performGenreSearch(genre) {
+      const statusEl = document.getElementById('search-status');
+      const resultsEl = document.getElementById('search-results');
+      statusEl.classList.remove('hidden');
+      try {
+        const res = await fetch(`/api/vibe?genre=${genre}&limit=10`);
+        const data = await res.json();
+        statusEl.classList.add('hidden');
+        const items = data.results || [];
+        if (items.length === 0) {
+          resultsEl.innerHTML = '<div class="col-span-2 text-center text-slate-500 py-10 text-xs font-medium">Ничего не найдено</div>';
+          return;
+        }
+        resultsEl.innerHTML = items.map(c => renderCardHTML(c, false)).join('');
+      } catch (e) {
+        statusEl.classList.add('hidden');
+      }
+    }
 
     async function setStatus(status) {
       if (!currentCard) return;
@@ -1046,7 +1298,8 @@
             mal_id: currentCard.shikimori_id || currentCard.mal_id,
             title: currentCard.title_ru || currentCard.title_en,
             lang: 'ru',
-            status: status
+            status: status,
+            image_url: currentCard.image_url || ''
           })
         });
         showToast(`Статус: ${statusLabels[status] || status}`);
@@ -1070,7 +1323,8 @@
             user_id: user.id,
             mal_id: currentCard.shikimori_id || currentCard.mal_id,
             title: currentCard.title_ru || currentCard.title_en,
-            lang: 'ru'
+            lang: 'ru',
+            image_url: currentCard.image_url || ''
           })
         });
         const data = await res.json();
@@ -1121,15 +1375,18 @@
           return;
         }
         container.innerHTML = items.map(item => `
-          <div class="glass-card rounded-2xl p-3.5 flex items-center justify-between cursor-pointer active:scale-[0.98] transition group" onclick="openCard(${item.mal_id})">
-            <div class="space-y-1 pr-3">
-              <div class="text-xs font-bold text-white group-hover:text-indigo-400 transition line-clamp-1">${item.title}</div>
-              <div class="text-[11px] font-medium text-slate-400 flex items-center gap-2">
-                <span>Серия: <b class="text-indigo-400">${item.current_episode || 0}</b></span>
-                ${item.is_favorite ? '<span class="text-amber-400">⭐ Избранное</span>' : ''}
+          <div class="glass-card rounded-2xl p-3 flex items-center justify-between cursor-pointer active:scale-[0.98] transition group" onclick="openCard(${item.mal_id})">
+            <div class="flex items-center gap-3 overflow-hidden">
+              <img src="${item.image_url || FALLBACK_POSTER}" class="w-11 h-16 object-cover rounded-xl shrink-0 border border-white/10 shadow-sm" onerror="imgFallback(this)">
+              <div class="space-y-1 overflow-hidden">
+                <div class="text-xs font-bold text-white group-hover:text-indigo-400 transition line-clamp-1">${item.title}</div>
+                <div class="text-[11px] font-medium text-slate-400 flex items-center gap-2">
+                  <span>Серия: <b class="text-indigo-400">${item.current_episode || 0}</b></span>
+                  ${item.is_favorite ? '<span class="text-amber-400">⭐ Избранное</span>' : ''}
+                </div>
               </div>
             </div>
-            <button class="bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white px-3 py-1.5 rounded-xl text-xs font-bold border border-indigo-500/30 transition flex items-center gap-1 active:scale-95" onclick="event.stopPropagation(); incEpisode(${item.mal_id}, ${item.current_episode || 0}, '${(item.title || '').replace(/'/g, "\\'")}')">
+            <button class="bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white px-3 py-1.5 rounded-xl text-xs font-bold border border-indigo-500/30 transition flex items-center gap-1 active:scale-95 shrink-0 ml-2" onclick="event.stopPropagation(); incEpisode(${item.mal_id}, ${item.current_episode || 0}, '${(item.title || '').replace(/'/g, "\\'")}', '${item.image_url || ''}')">
               <span>+1 эп.</span>
             </button>
           </div>
@@ -1139,7 +1396,7 @@
       }
     }
 
-    async function incEpisode(malId, currentEp, title = '') {
+    async function incEpisode(malId, currentEp, title = '', imageUrl = '') {
       haptic();
       await apiFetch('/api/library/episode', {
         method: 'POST',
@@ -1149,7 +1406,8 @@
           mal_id: malId,
           title: title,
           lang: 'ru',
-          episode: currentEp + 1
+          episode: currentEp + 1,
+          image_url: imageUrl
         })
       });
       loadLibrary(currentLibraryStatus);
