@@ -266,10 +266,48 @@ async def get_anime_details(
         except Exception as e:
             _log.info("AniLibria enrich failed for %s: %s", anime_id, e)
 
+        # If Kodik is not available, but AniLibria has HLS streams, build native HLS player payload!
+        if not player_info and anilibria_info and anilibria_info.get("episode_streams"):
+            streams = anilibria_info["episode_streams"]
+            ep_keys = sorted(streams.keys())
+            first_ep = ep_keys[0] if ep_keys else 1
+            first_stream = streams[first_ep].get("720") or streams[first_ep].get("1080") or streams[first_ep].get("480") or ""
+            
+            ep_urls = {
+                ep_num: (q_map.get("720") or q_map.get("1080") or q_map.get("480") or "")
+                for ep_num, q_map in streams.items()
+            }
+
+            player_info = {
+                "type": "hls",
+                "url": first_stream,
+                "episodes": ep_urls,
+                "episode_streams": streams,
+                "last_ep": max(ep_keys) if ep_keys else 1,
+                "translation": "AniLibria (DUB)",
+                "translation_id": 999,
+                "translations": [{
+                    "id": 999,
+                    "title": "AniLibria (DUB)",
+                    "type": "voice",
+                    "episodes_count": len(ep_keys),
+                }],
+            }
+        elif player_info and anilibria_info and anilibria_info.get("episode_streams"):
+            # Add AniLibria as an extra translation option alongside Kodik
+            player_info.setdefault("translations", []).append({
+                "id": 999,
+                "title": "AniLibria (HLS)",
+                "type": "voice",
+                "episodes_count": len(anilibria_info.get("episodes", [])),
+            })
+            player_info["anilibria_streams"] = anilibria_info.get("episode_streams")
+
         sources = {
             "shikimori": f"https://shikimori.one/animes/{anime_id}",
             "anilibria": anilibria_info.get("url") if anilibria_info else None,
             "anilibria_episodes": anilibria_info.get("episodes") if anilibria_info else [],
+            "anilibria_streams": anilibria_info.get("episode_streams") if anilibria_info else {},
             "anilibria_code": anilibria_info.get("code") if anilibria_info else None,
         }
 
@@ -289,6 +327,39 @@ async def get_player_stream(
     translation_id: Optional[int] = None,
 ):
     """Fast player-only stream URL with translation/voice switching."""
+    if translation_id == 999 or not kodik.enabled():
+        try:
+            full = await shikimori.get_by_id(anime_id)
+            title_ru = (full.get("title_ru") or full.get("title_en") or "") if full else ""
+            from services import anilibria
+            anilibria_info = await anilibria.find_release(title_ru)
+            if anilibria_info and anilibria_info.get("episode_streams"):
+                streams = anilibria_info["episode_streams"]
+                ep_keys = sorted(streams.keys())
+                first_ep = ep_keys[0] if ep_keys else 1
+                first_stream = streams[first_ep].get("720") or streams[first_ep].get("1080") or streams[first_ep].get("480") or ""
+                ep_urls = {
+                    ep_num: (q_map.get("720") or q_map.get("1080") or q_map.get("480") or "")
+                    for ep_num, q_map in streams.items()
+                }
+                return {
+                    "type": "hls",
+                    "url": first_stream,
+                    "episodes": ep_urls,
+                    "episode_streams": streams,
+                    "last_ep": max(ep_keys) if ep_keys else 1,
+                    "translation": "AniLibria (DUB)",
+                    "translation_id": 999,
+                    "translations": [{
+                        "id": 999,
+                        "title": "AniLibria (DUB)",
+                        "type": "voice",
+                        "episodes_count": len(ep_keys),
+                    }],
+                }
+        except Exception as e:
+            _log.info("AniLibria fallback player failed: %s", e)
+
     if not kodik.enabled():
         return {"url": None, "episodes": {}, "translations": []}
     try:

@@ -7,6 +7,9 @@
   
   <!-- Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <!-- HLS.js Video Streaming Engine -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js"></script>
   
   <!-- Premium Google Fonts: Plus Jakarta Sans -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -535,9 +538,12 @@
         <span id="modal-hero-watch-text">Смотреть 1 серию</span>
       </button>
 
-      <!-- CINEMATIC VIDEO PLAYER IFRAME -->
+      <!-- CINEMATIC VIDEO PLAYER HUB -->
       <div id="player-container" class="w-full aspect-video bg-black rounded-2xl overflow-hidden border border-white/15 relative shadow-glow-indigo hidden">
-        <iframe id="video-frame" src="" class="w-full h-full border-0" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
+        <!-- Native HTML5 Video Player for HLS (AniLibria) -->
+        <video id="hls-video" class="w-full h-full object-contain hidden" playsinline controls preload="metadata"></video>
+        <!-- Iframe Player for Kodik Embed -->
+        <iframe id="video-frame" src="" class="w-full h-full border-0 hidden" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
       </div>
 
       <!-- FALLBACK PLAYER & STREAMING SOURCES HUB -->
@@ -1018,13 +1024,12 @@
         // Setup Player
         const playerContainer = document.getElementById('player-container');
         const fallbackCard = document.getElementById('player-fallback-card');
-        const videoFrame = document.getElementById('video-frame');
         const voiceWrapper = document.getElementById('voice-wrapper');
 
         if (data.kodik && data.kodik.url) {
           playerContainer.classList.remove('hidden');
           fallbackCard.classList.add('hidden');
-          videoFrame.src = data.kodik.url;
+          playVideo(data.kodik.url);
           document.getElementById('player-voice').textContent = data.kodik.translation || 'Стандартная';
 
           if (data.kodik.translations && data.kodik.translations.length > 1) {
@@ -1042,6 +1047,7 @@
             voiceWrapper.classList.add('hidden');
           }
         } else {
+          stopVideo();
           playerContainer.classList.add('hidden');
           fallbackCard.classList.remove('hidden');
           voiceWrapper.classList.add('hidden');
@@ -1088,6 +1094,92 @@
       }
     }
 
+    let currentHls = null;
+
+    function stopVideo() {
+      const hlsVideo = document.getElementById('hls-video');
+      const videoFrame = document.getElementById('video-frame');
+      if (hlsVideo) {
+        hlsVideo.pause();
+        hlsVideo.classList.add('hidden');
+        hlsVideo.src = '';
+      }
+      if (videoFrame) {
+        videoFrame.classList.add('hidden');
+        videoFrame.src = '';
+      }
+      if (currentHls) {
+        currentHls.destroy();
+        currentHls = null;
+      }
+    }
+
+    function playVideo(url) {
+      const hlsVideo = document.getElementById('hls-video');
+      const videoFrame = document.getElementById('video-frame');
+      const playerContainer = document.getElementById('player-container');
+      const fallbackCard = document.getElementById('player-fallback-card');
+
+      if (!url) {
+        stopVideo();
+        if (playerContainer) playerContainer.classList.add('hidden');
+        if (fallbackCard) fallbackCard.classList.remove('hidden');
+        return;
+      }
+
+      if (playerContainer) playerContainer.classList.remove('hidden');
+      if (fallbackCard) fallbackCard.classList.add('hidden');
+
+      if (url.includes('.m3u8')) {
+        // Native HLS Player mode (AniLibria / HLS)
+        if (videoFrame) {
+          videoFrame.classList.add('hidden');
+          videoFrame.src = '';
+        }
+        if (hlsVideo) {
+          hlsVideo.classList.remove('hidden');
+
+          if (window.Hls && Hls.isSupported()) {
+            if (currentHls) {
+              currentHls.destroy();
+            }
+            currentHls = new Hls({
+              enableWorker: true,
+              lowLatencyMode: false,
+            });
+            currentHls.loadSource(url);
+            currentHls.attachMedia(hlsVideo);
+            currentHls.on(Hls.Events.MANIFEST_PARSED, function () {
+              hlsVideo.play().catch(() => {});
+            });
+          } else if (hlsVideo.canPlayType('application/vnd.apple.mpegurl')) {
+            // Native Safari / iOS WebKit HLS
+            hlsVideo.src = url;
+            hlsVideo.addEventListener('loadedmetadata', function () {
+              hlsVideo.play().catch(() => {});
+            }, { once: true });
+          } else {
+            hlsVideo.src = url;
+          }
+        }
+      } else {
+        // Iframe embed mode (Kodik)
+        if (currentHls) {
+          currentHls.destroy();
+          currentHls = null;
+        }
+        if (hlsVideo) {
+          hlsVideo.pause();
+          hlsVideo.classList.add('hidden');
+          hlsVideo.src = '';
+        }
+        if (videoFrame) {
+          videoFrame.classList.remove('hidden');
+          videoFrame.src = url;
+        }
+      }
+    }
+
     function scrollToPlayer() {
       haptic();
       const playerContainer = document.getElementById('player-container');
@@ -1123,7 +1215,7 @@
         if (currentCard) {
           currentCard.kodik = playerInfo;
         }
-        document.getElementById('video-frame').src = playerInfo.url;
+        playVideo(playerInfo.url);
         document.getElementById('player-voice').textContent = playerInfo.translation || 'Стандартная';
 
         document.querySelectorAll('.voice-pill').forEach(b => {
@@ -1157,10 +1249,13 @@
     function changeEpisode(url, epNum) {
       haptic();
       currentPlayingEpisode = epNum;
-      const videoFrame = document.getElementById('video-frame');
-      videoFrame.src = url;
+      if (url) {
+        playVideo(url);
+      }
 
       highlightActiveEpisode(epNum);
+      document.getElementById('episodes-active-badge').textContent = `Серия ${epNum}`;
+      document.getElementById('modal-hero-watch-text').textContent = `Продолжить: ${epNum} серия`;
       showToast(`Включена ${epNum} серия 🎬`);
 
       if (currentCard) {
@@ -1259,10 +1354,72 @@
       }
     });
 
+    // Native HTML5 Video Heartbeat & Watch Progress
+    const hlsVideoEl = document.getElementById('hls-video');
+    if (hlsVideoEl) {
+      hlsVideoEl.addEventListener('timeupdate', () => {
+        if (!currentCard) return;
+        const malId = currentCard.shikimori_id || currentCard.mal_id;
+        if (!malId) return;
+
+        const currentTime = Math.floor(hlsVideoEl.currentTime || 0);
+        const duration = Math.floor(hlsVideoEl.duration || 0);
+        const epKey = `${malId}-${currentPlayingEpisode}`;
+        const reachedThreshold = duration > 60 && (currentTime / duration >= 0.85);
+
+        if (reachedThreshold && !completedEpisodes.has(epKey)) {
+          completedEpisodes.add(epKey);
+          haptic();
+          showToast(`Серия ${currentPlayingEpisode} просмотрена! ✨`);
+
+          apiFetch('/api/library/progress', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: user.id,
+              mal_id: malId,
+              title: currentCard.title_ru || currentCard.title_en || '',
+              lang: 'ru',
+              episode: currentPlayingEpisode,
+              position: currentTime,
+              duration: duration,
+              completed: true,
+              image_url: currentCard.image_url || ''
+            })
+          }).catch(console.error);
+
+          const epBtn = document.getElementById(`ep-btn-${currentPlayingEpisode}`);
+          if (epBtn && !epBtn.innerText.includes('✓')) {
+            epBtn.innerHTML = `${currentPlayingEpisode} <span class="text-emerald-400 text-[10px]">✓</span>`;
+          }
+        } else if (currentTime > 0) {
+          const now = Date.now();
+          if (now - lastProgressSent > 15000) {
+            lastProgressSent = now;
+            apiFetch('/api/library/progress', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                user_id: user.id,
+                mal_id: malId,
+                title: currentCard.title_ru || currentCard.title_en || '',
+                lang: 'ru',
+                episode: currentPlayingEpisode,
+                position: currentTime,
+                duration: duration,
+                completed: false,
+                image_url: currentCard.image_url || ''
+              })
+            }).catch(console.error);
+          }
+        }
+      });
+    }
+
     document.getElementById('modal-close').onclick = () => {
       haptic();
       document.getElementById('detail-modal').classList.add('hidden');
-      document.getElementById('video-frame').src = '';
+      stopVideo();
     };
 
     // User Profile Modal Drawer

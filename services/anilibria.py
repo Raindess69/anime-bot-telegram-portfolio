@@ -87,11 +87,16 @@ async def find_release(
         )
         return None
 
-    return await get_release_by_code(best_alias) or {
+    full_rel = await get_release_by_code(best_alias)
+    if full_rel:
+        return full_rel
+
+    return {
         "code": best_alias,
         "url": release_url(best_alias),
         "episodes": _extract_episodes(best_item),
         "episode_ids": _extract_episode_ids(best_item),
+        "episode_streams": _extract_episode_streams(best_item),
         "torrents": _extract_torrents(best_item),
     }
 
@@ -115,6 +120,7 @@ async def get_release_by_code(alias: str) -> dict | None:
         "url": release_url(data["alias"]),
         "episodes": _extract_episodes(data),
         "episode_ids": _extract_episode_ids(data),
+        "episode_streams": _extract_episode_streams(data),
         "torrents": _extract_torrents(data),
     }
 
@@ -231,3 +237,30 @@ def _extract_episode_ids(release: dict) -> dict[int, str]:
         except (ValueError, TypeError):
             continue
     return result
+
+
+def _extract_episode_streams(release: dict) -> dict[int, dict[str, str]]:
+    """Returns {ordinal: {"480": url, "720": url, "1080": url}}."""
+    episodes = release.get("episodes") or []
+    result: dict[int, dict[str, str]] = {}
+    if not isinstance(episodes, list):
+        return result
+    for ep in episodes:
+        if not isinstance(ep, dict):
+            continue
+        ordinal = ep.get("ordinal")
+        if ordinal is None:
+            continue
+        try:
+            ord_int = int(ordinal)
+        except (ValueError, TypeError):
+            continue
+        streams: dict[str, str] = {}
+        for qual in ("480", "720", "1080"):
+            url = ep.get(f"hls_{qual}")
+            if url:
+                streams[qual] = url
+        if streams:
+            result[ord_int] = streams
+    return result
+
