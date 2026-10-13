@@ -266,42 +266,57 @@ async def get_anime_details(
         except Exception as e:
             _log.info("AniLibria enrich failed for %s: %s", anime_id, e)
 
-        # If Kodik is not available, but AniLibria has HLS streams, build native HLS player payload!
-        if not player_info and anilibria_info and anilibria_info.get("episode_streams"):
+        # Check Shikicinema (free open embedded balancer)
+        shiki_player = None
+        try:
+            from services import shikicinema
+            shiki_player = await shikicinema.get_player(anime_id, translation_id=translation_id)
+        except Exception as e:
+            _log.info("Shikicinema enrich failed for %s: %s", anime_id, e)
+
+        # Build AniLibria HLS payload if streams exist
+        anili_payload = None
+        if anilibria_info and anilibria_info.get("episode_streams"):
             streams = anilibria_info["episode_streams"]
             ep_keys = sorted(streams.keys())
             first_ep = ep_keys[0] if ep_keys else 1
             first_stream = streams[first_ep].get("720") or streams[first_ep].get("1080") or streams[first_ep].get("480") or ""
-            
             ep_urls = {
                 ep_num: (q_map.get("720") or q_map.get("1080") or q_map.get("480") or "")
                 for ep_num, q_map in streams.items()
             }
-
-            player_info = {
+            anili_label = f"AniLibria (DUB {first_ep}–{max(ep_keys)})" if first_ep > 1 else "AniLibria (DUB)"
+            anili_payload = {
                 "type": "hls",
                 "url": first_stream,
                 "episodes": ep_urls,
                 "episode_streams": streams,
+                "first_ep": first_ep,
                 "last_ep": max(ep_keys) if ep_keys else 1,
-                "translation": "AniLibria (DUB)",
+                "translation": anili_label,
                 "translation_id": 999,
                 "translations": [{
                     "id": 999,
-                    "title": "AniLibria (DUB)",
+                    "title": anili_label,
                     "type": "voice",
                     "episodes_count": len(ep_keys),
                 }],
             }
-        elif player_info and anilibria_info and anilibria_info.get("episode_streams"):
-            # Add AniLibria as an extra translation option alongside Kodik
-            player_info.setdefault("translations", []).append({
-                "id": 999,
-                "title": "AniLibria (HLS)",
-                "type": "voice",
-                "episodes_count": len(anilibria_info.get("episodes", [])),
-            })
-            player_info["anilibria_streams"] = anilibria_info.get("episode_streams")
+
+        if not player_info:
+            if anili_payload and anili_payload.get("first_ep") == 1:
+                player_info = anili_payload
+                if shiki_player and shiki_player.get("translations"):
+                    player_info["translations"].extend(shiki_player["translations"])
+            elif shiki_player and shiki_player.get("episodes"):
+                player_info = shiki_player
+                if anili_payload:
+                    player_info["translations"].append(anili_payload["translations"][0])
+            elif anili_payload:
+                player_info = anili_payload
+        elif player_info and anili_payload:
+            player_info.setdefault("translations", []).append(anili_payload["translations"][0])
+            player_info["anilibria_streams"] = anili_payload["episode_streams"]
 
         import urllib.parse
         q_search = urllib.parse.quote(title_ru or full.get("title_en") or "")
@@ -331,7 +346,7 @@ async def get_player_stream(
     translation_id: Optional[int] = None,
 ):
     """Fast player-only stream URL with translation/voice switching."""
-    if translation_id == 999 or not kodik.enabled():
+    if translation_id == 999:
         try:
             full = await shikimori.get_by_id(anime_id)
             title_ru = (full.get("title_ru") or full.get("title_en") or "") if full else ""
@@ -346,36 +361,42 @@ async def get_player_stream(
                     ep_num: (q_map.get("720") or q_map.get("1080") or q_map.get("480") or "")
                     for ep_num, q_map in streams.items()
                 }
+                anili_label = f"AniLibria (DUB {first_ep}–{max(ep_keys)})" if first_ep > 1 else "AniLibria (DUB)"
                 return {
                     "type": "hls",
                     "url": first_stream,
                     "episodes": ep_urls,
                     "episode_streams": streams,
+                    "first_ep": first_ep,
                     "last_ep": max(ep_keys) if ep_keys else 1,
-                    "translation": "AniLibria (DUB)",
+                    "translation": anili_label,
                     "translation_id": 999,
-                    "translations": [{
-                        "id": 999,
-                        "title": "AniLibria (DUB)",
-                        "type": "voice",
-                        "episodes_count": len(ep_keys),
-                    }],
                 }
         except Exception as e:
             _log.info("AniLibria fallback player failed: %s", e)
 
-    if not kodik.enabled():
-        return {"url": None, "episodes": {}, "translations": []}
+    # Check Shikicinema
     try:
-        player_info = await kodik.get_player(
-            shikimori_id=anime_id,
-            mal_id=anime_id,
-            translation_id=translation_id,
-        )
-        return player_info or {"url": None, "episodes": {}, "translations": []}
+        from services import shikicinema
+        shiki = await shikicinema.get_player(anime_id, translation_id=translation_id)
+        if shiki and shiki.get("url"):
+            return shiki
     except Exception as e:
-        _log.warning("Player stream error: %s", e)
-        return {"url": None, "episodes": {}, "translations": []}
+        _log.info("Shikicinema player switch failed: %s", e)
+
+    if kodik.enabled():
+        try:
+            player_info = await kodik.get_player(
+                shikimori_id=anime_id,
+                mal_id=anime_id,
+                translation_id=translation_id,
+            )
+            if player_info:
+                return player_info
+        except Exception as e:
+            _log.info("Kodik player switch failed: %s", e)
+
+    return {"url": None, "episodes": {}, "translations": []}
 
 
 @app.get("/api/user/me")

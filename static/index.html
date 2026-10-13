@@ -53,6 +53,18 @@
 
   <style>
     ::-webkit-scrollbar { display: none; }
+    #episodes-list::-webkit-scrollbar {
+      display: block !important;
+      width: 5px;
+    }
+    #episodes-list::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 9999px;
+    }
+    #episodes-list::-webkit-scrollbar-thumb {
+      background: rgba(99, 102, 241, 0.6);
+      border-radius: 9999px;
+    }
     * { -webkit-tap-highlight-color: transparent; }
     body {
       background-color: #06070a;
@@ -542,34 +554,59 @@
       <div id="player-container" class="w-full aspect-video bg-black rounded-2xl overflow-hidden border border-white/15 relative shadow-glow-indigo hidden">
         <!-- Native HTML5 Video Player for HLS (AniLibria) -->
         <video id="hls-video" class="w-full h-full object-contain hidden" playsinline controls preload="metadata"></video>
-        <!-- Iframe Player for Kodik Embed -->
+        <!-- Iframe Player for Kodik / Shikicinema Embed -->
         <iframe id="video-frame" src="" class="w-full h-full border-0 hidden" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
       </div>
 
-      <!-- FALLBACK PLAYER & STREAMING SOURCES HUB -->
-      <div id="player-fallback-card" class="bg-dark-850 border border-white/10 rounded-2xl p-4 space-y-3">
+      <!-- CUSTOM SEEKBAR & VIDEO CONTROLS (ПОЛЗУНОК ПЕРЕМОТКИ ДЛЯ HLS) -->
+      <div id="custom-player-controls" class="hidden bg-dark-850 border border-white/10 rounded-2xl p-3 space-y-2">
+        <div class="flex items-center gap-2.5">
+          <span id="player-time-current" class="text-[11px] font-mono text-slate-300 w-10 text-right">00:00</span>
+          <input type="range" id="player-seek-bar" min="0" max="100" value="0" step="0.1" class="flex-1 accent-indigo-500 h-2 bg-white/10 rounded-lg cursor-pointer">
+          <span id="player-time-total" class="text-[11px] font-mono text-slate-400 w-10">00:00</span>
+        </div>
+        <div class="flex items-center justify-between text-xs font-semibold">
+          <div class="flex items-center gap-1.5">
+            <button onclick="seekVideo(-10)" class="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-300 flex items-center gap-1 active:scale-95 transition text-[11px]">
+              ⏪ -10с
+            </button>
+            <button id="btn-player-playpause" onclick="togglePlayPause()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-white font-bold flex items-center gap-1 active:scale-95 transition shadow-glow-indigo text-[11px]">
+              <span id="btn-playpause-icon">⏸ Пауза</span>
+            </button>
+            <button onclick="seekVideo(10)" class="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-300 flex items-center gap-1 active:scale-95 transition text-[11px]">
+              +10с ⏩
+            </button>
+          </div>
+          <button onclick="toggleVideoFullscreen()" class="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-300 flex items-center gap-1 active:scale-95 transition text-[11px]">
+            ⛶ На весь экран
+          </button>
+        </div>
+      </div>
+
+      <!-- FALLBACK SITES HUB -->
+      <div id="player-fallback-card" class="bg-dark-850 border border-white/10 rounded-2xl p-4 space-y-3 hidden">
         <div class="flex items-center justify-between">
           <span class="text-xs font-bold text-white flex items-center gap-2">
             <svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8" fill="currentColor"/></svg>
-            Плеер и источники видео:
+            Внешние сайты онлайн:
           </span>
-          <span id="player-status-badge" class="text-[10px] bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-2 py-0.5 rounded-full font-bold">Онлайн</span>
+          <span id="player-status-badge" class="text-[10px] bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-2 py-0.5 rounded-full font-bold">Внешние сайты</span>
         </div>
         <p id="player-fallback-text" class="text-[11px] text-slate-400 leading-relaxed font-normal">
-          Выберите серию из списка ниже или откройте просмотр в один клик:
+          Для этого тайтла нет встроенного плеера. Вы можете открыть просмотр на проверенных сайтах (откроется в новой вкладке):
         </p>
         <div class="grid grid-cols-2 gap-2 text-xs font-semibold">
           <a id="btn-watch-anilibria" href="#" target="_blank" onclick="openSourceUrl(event, this.href)" class="py-2.5 px-3 rounded-xl bg-violet-600/25 hover:bg-violet-600 border border-violet-500/30 text-violet-200 hover:text-white flex items-center justify-center gap-1.5 transition hidden">
-            🎙️ AniLibria
+            🎙️ AniLibria ↗
           </a>
           <a id="btn-watch-shikimori" href="#" target="_blank" onclick="openSourceUrl(event, this.href)" class="py-2.5 px-3 rounded-xl bg-indigo-600/25 hover:bg-indigo-600 border border-indigo-500/30 text-indigo-200 hover:text-white flex items-center justify-center gap-1.5 transition">
-            ⭐ Shikimori
+            ⭐ Shikimori ↗
           </a>
           <a id="btn-watch-yummy" href="#" target="_blank" onclick="openSourceUrl(event, this.href)" class="py-2.5 px-3 rounded-xl bg-pink-600/25 hover:bg-pink-600 border border-pink-500/30 text-pink-200 hover:text-white flex items-center justify-center gap-1.5 transition">
-            🍿 YummyAnime
+            🍿 YummyAnime ↗
           </a>
           <a id="btn-watch-animego" href="#" target="_blank" onclick="openSourceUrl(event, this.href)" class="py-2.5 px-3 rounded-xl bg-emerald-600/25 hover:bg-emerald-600 border border-emerald-500/30 text-emerald-200 hover:text-white flex items-center justify-center gap-1.5 transition">
-            ⚡ AnimeGO
+            ⚡ AnimeGO ↗
           </a>
         </div>
       </div>
@@ -1085,7 +1122,7 @@
           }
         }
 
-        // Always render episode buttons!
+          // Always render episode buttons!
         let episodesMap = {};
         if (data.kodik && data.kodik.episodes && Object.keys(data.kodik.episodes).length > 0) {
           episodesMap = data.kodik.episodes;
@@ -1095,9 +1132,13 @@
             episodesMap[i] = '';
           }
         }
-        currentPlayingEpisode = 1;
-        document.getElementById('modal-hero-watch-text').textContent = 'Смотреть 1 серию';
-        document.getElementById('episodes-active-badge').textContent = 'Серия 1';
+        const epKeys = Object.keys(episodesMap).map(Number).sort((a,b)=>a-b);
+        const firstEp = epKeys.length > 0 ? epKeys[0] : 1;
+        currentPlayingEpisode = firstEp;
+        if (heroWatchText) {
+          heroWatchText.textContent = data.kodik && data.kodik.url ? `Смотреть ${firstEp} серию` : 'Выбрать плеер онлайн 🎬';
+        }
+        document.getElementById('episodes-active-badge').textContent = `Серия ${firstEp}`;
         renderEpisodeButtons(episodesMap);
 
         // Fetch user title state (status, current_episode, is_favorite)
@@ -1127,10 +1168,20 @@
     }
 
     let currentHls = null;
+    let isUserSeeking = false;
+
+    function formatPlayerTime(seconds) {
+      if (!seconds || isNaN(seconds) || seconds === Infinity) return '00:00';
+      const s = Math.floor(seconds);
+      const m = Math.floor(s / 60);
+      const rem = s % 60;
+      return `${m < 10 ? '0' : ''}${m}:${rem < 10 ? '0' : ''}${rem}`;
+    }
 
     function stopVideo() {
       const hlsVideo = document.getElementById('hls-video');
       const videoFrame = document.getElementById('video-frame');
+      const customControls = document.getElementById('custom-player-controls');
       if (hlsVideo) {
         hlsVideo.pause();
         hlsVideo.classList.add('hidden');
@@ -1139,6 +1190,9 @@
       if (videoFrame) {
         videoFrame.classList.add('hidden');
         videoFrame.src = '';
+      }
+      if (customControls) {
+        customControls.classList.add('hidden');
       }
       if (currentHls) {
         currentHls.destroy();
@@ -1151,11 +1205,13 @@
       const videoFrame = document.getElementById('video-frame');
       const playerContainer = document.getElementById('player-container');
       const fallbackCard = document.getElementById('player-fallback-card');
+      const customControls = document.getElementById('custom-player-controls');
 
       if (!url) {
         stopVideo();
         if (playerContainer) playerContainer.classList.add('hidden');
         if (fallbackCard) fallbackCard.classList.remove('hidden');
+        if (customControls) customControls.classList.add('hidden');
         return;
       }
 
@@ -1168,6 +1224,9 @@
           videoFrame.classList.add('hidden');
           videoFrame.src = '';
         }
+        if (customControls) {
+          customControls.classList.remove('hidden');
+        }
         if (hlsVideo) {
           hlsVideo.classList.remove('hidden');
 
@@ -1178,9 +1237,16 @@
             currentHls = new Hls({
               enableWorker: true,
               lowLatencyMode: false,
+              liveDurationInfinity: false,
+              backBufferLength: 90,
             });
             currentHls.loadSource(url);
             currentHls.attachMedia(hlsVideo);
+            currentHls.on(Hls.Events.LEVEL_LOADED, function (event, data) {
+              if (data && data.details && data.details.endList) {
+                data.details.live = false;
+              }
+            });
             currentHls.on(Hls.Events.MANIFEST_PARSED, function () {
               hlsVideo.play().catch(() => {});
             });
@@ -1195,7 +1261,7 @@
           }
         }
       } else {
-        // Iframe embed mode (Kodik)
+        // Iframe embed mode (Shikicinema / Kodik)
         if (currentHls) {
           currentHls.destroy();
           currentHls = null;
@@ -1205,10 +1271,94 @@
           hlsVideo.classList.add('hidden');
           hlsVideo.src = '';
         }
+        if (customControls) {
+          customControls.classList.add('hidden');
+        }
         if (videoFrame) {
           videoFrame.classList.remove('hidden');
           videoFrame.src = url;
         }
+      }
+    }
+
+    function initCustomPlayerControls() {
+      const hlsVideo = document.getElementById('hls-video');
+      const seekBar = document.getElementById('player-seek-bar');
+      const timeCurrent = document.getElementById('player-time-current');
+      const timeTotal = document.getElementById('player-time-total');
+      const btnPlayIcon = document.getElementById('btn-playpause-icon');
+
+      if (!hlsVideo || !seekBar) return;
+
+      hlsVideo.addEventListener('timeupdate', () => {
+        if (!isUserSeeking && hlsVideo.duration && hlsVideo.duration !== Infinity && !isNaN(hlsVideo.duration)) {
+          seekBar.value = (hlsVideo.currentTime / hlsVideo.duration) * 100;
+          timeCurrent.textContent = formatPlayerTime(hlsVideo.currentTime);
+          timeTotal.textContent = formatPlayerTime(hlsVideo.duration);
+        }
+      });
+
+      hlsVideo.addEventListener('durationchange', () => {
+        if (hlsVideo.duration && hlsVideo.duration !== Infinity && !isNaN(hlsVideo.duration)) {
+          timeTotal.textContent = formatPlayerTime(hlsVideo.duration);
+        }
+      });
+
+      hlsVideo.addEventListener('play', () => {
+        if (btnPlayIcon) btnPlayIcon.textContent = '⏸ Пауза';
+      });
+
+      hlsVideo.addEventListener('pause', () => {
+        if (btnPlayIcon) btnPlayIcon.textContent = '▶ Играть';
+      });
+
+      seekBar.addEventListener('input', () => {
+        isUserSeeking = true;
+        if (hlsVideo.duration && hlsVideo.duration !== Infinity) {
+          const target = (seekBar.value / 100) * hlsVideo.duration;
+          timeCurrent.textContent = formatPlayerTime(target);
+        }
+      });
+
+      seekBar.addEventListener('change', () => {
+        if (hlsVideo.duration && hlsVideo.duration !== Infinity) {
+          hlsVideo.currentTime = (seekBar.value / 100) * hlsVideo.duration;
+        }
+        isUserSeeking = false;
+      });
+    }
+
+    function togglePlayPause() {
+      haptic();
+      const hlsVideo = document.getElementById('hls-video');
+      if (!hlsVideo) return;
+      if (hlsVideo.paused) {
+        hlsVideo.play().catch(() => {});
+      } else {
+        hlsVideo.pause();
+      }
+    }
+
+    function seekVideo(delta) {
+      haptic();
+      const hlsVideo = document.getElementById('hls-video');
+      if (!hlsVideo) return;
+      const cur = hlsVideo.currentTime || 0;
+      const dur = (hlsVideo.duration && hlsVideo.duration !== Infinity && !isNaN(hlsVideo.duration)) ? hlsVideo.duration : cur + 60;
+      hlsVideo.currentTime = Math.max(0, Math.min(dur, cur + delta));
+    }
+
+    function toggleVideoFullscreen() {
+      haptic();
+      const container = document.getElementById('player-container');
+      const hlsVideo = document.getElementById('hls-video');
+      if (!container) return;
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      } else if (container.requestFullscreen) {
+        container.requestFullscreen().catch(() => {});
+      } else if (hlsVideo && hlsVideo.webkitEnterFullscreen) {
+        hlsVideo.webkitEnterFullscreen();
       }
     }
 
@@ -1684,6 +1834,7 @@
       loadLibrary(currentLibraryStatus);
     }
 
+    initCustomPlayerControls();
     loadFeed();
 
     // Deep-link routing via URL hash or Telegram start_param
