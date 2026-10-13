@@ -118,25 +118,39 @@ async def cb_start_lang(call: CallbackQuery) -> None:
             pass
 
 
+def get_mini_app_url() -> str:
+    try:
+        from dotenv import dotenv_values
+        vals = dotenv_values(".env")
+        url = vals.get("WEB_APP_URL") or vals.get("MINI_APP_URL")
+        if url and url.startswith("https://"):
+            return url
+    except Exception:
+        pass
+    from config import settings
+    return settings.mini_app_url
+
+
 @router.message(Command("app"))
 @router.message(Command("webapp"))
 async def cmd_webapp(message: Message) -> None:
     from aiogram.types import WebAppInfo
-    from config import settings
 
+    current_url = get_mini_app_url()
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="📺 Открыть EnjoyAnime (Mini App)",
-                    web_app=WebAppInfo(url=settings.mini_app_url),
+                    web_app=WebAppInfo(url=current_url),
                 )
             ]
         ]
     )
     await message.answer(
-        "✨ <b>EnjoyAnime WebApp</b>\n\n"
-        "Нажмите на кнопку ниже, чтобы открыть визуальный каталог, трекер и просмотр серий:",
+        f"✨ <b>EnjoyAnime WebApp</b>\n\n"
+        f"🔗 Актуальный адрес: <code>{current_url}</code>\n\n"
+        "Нажмите на кнопку ниже, чтобы открыть приложение:",
         parse_mode=ParseMode.HTML,
         reply_markup=kb,
     )

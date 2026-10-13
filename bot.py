@@ -81,6 +81,7 @@ async def refresh_menu_button(bot: Bot) -> None:
         vals = dotenv_values(".env")
         current_url = vals.get("WEB_APP_URL") or vals.get("MINI_APP_URL") or settings.mini_app_url
         if current_url and current_url.startswith("https://"):
+            settings.mini_app_url = current_url
             from aiogram.types import MenuButtonWebApp, WebAppInfo
             await bot.set_chat_menu_button(
                 menu_button=MenuButtonWebApp(
