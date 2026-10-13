@@ -97,41 +97,109 @@
     @media (min-width: 640px) {
       .media-card { flex: 0 0 180px; }
     }
+
+    /* Toast notification */
+    .toast {
+      position: fixed;
+      top: 1rem;
+      left: 50%;
+      transform: translateX(-50%) translateY(-120%);
+      z-index: 9999;
+      padding: 0.65rem 1.25rem;
+      border-radius: 1rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #fff;
+      background: linear-gradient(135deg, rgba(99,102,241,0.92), rgba(139,92,246,0.92));
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.15);
+      box-shadow: 0 8px 32px -4px rgba(99,102,241,0.4);
+      transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1), opacity 0.3s;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+
+    /* Skeleton shimmer */
+    @keyframes shimmer {
+      0% { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+    .skeleton {
+      background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s ease-in-out infinite;
+      border-radius: 1rem;
+    }
+
+    /* Modal slide-up animation */
+    .modal-sheet {
+      transform: translateY(100%);
+      transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+    }
+    .modal-sheet.open {
+      transform: translateY(0);
+    }
+
+    /* Fade overlay */
+    .modal-overlay {
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    .modal-overlay.open {
+      opacity: 1;
+    }
+
+    /* Active status indicator on library buttons */
+    .status-btn-active {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
+      color: #fff !important;
+      border-color: rgba(99,102,241,0.5) !important;
+      box-shadow: 0 0 20px -4px rgba(99,102,241,0.4);
+    }
   </style>
 </head>
 <body class="select-none antialiased">
 
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast" class="toast"></div>
+
   <!-- TOP HEADER -->
-  <header class="sticky top-0 z-40 glass-nav px-4 py-3 flex items-center justify-between transition-all">
-    <div class="flex items-center space-x-2.5">
-      <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-violet-600 via-indigo-600 to-pink-500 p-0.5 shadow-glow-indigo flex items-center justify-center">
-        <div class="w-full h-full bg-dark-950 rounded-[10px] flex items-center justify-center font-black text-xs text-transparent bg-clip-text bg-gradient-to-tr from-violet-400 to-pink-400">
-          EA
+  <header class="sticky top-0 z-40 glass-nav px-4 py-3 transition-all">
+    <div class="max-w-4xl mx-auto flex items-center justify-between">
+      <div class="flex items-center space-x-2.5">
+        <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-violet-600 via-indigo-600 to-pink-500 p-0.5 shadow-glow-indigo flex items-center justify-center">
+          <div class="w-full h-full bg-dark-950 rounded-[10px] flex items-center justify-center font-black text-xs text-transparent bg-clip-text bg-gradient-to-tr from-violet-400 to-pink-400">
+            EA
+          </div>
+        </div>
+        <div>
+          <h1 class="text-sm font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+            EnjoyAnime
+          </h1>
+          <p class="text-[10px] font-medium text-indigo-400 tracking-wider uppercase -mt-0.5">Streaming App</p>
         </div>
       </div>
-      <div>
-        <h1 class="text-sm font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-          EnjoyAnime
-        </h1>
-        <p class="text-[10px] font-medium text-indigo-400 tracking-wider uppercase -mt-0.5">Streaming App</p>
-      </div>
-    </div>
 
-    <!-- Right Quick Actions: Random Button + User Badge -->
-    <div class="flex items-center gap-2">
-      <button onclick="rollRandom()" class="bg-gradient-to-r from-violet-600 to-indigo-600 text-white p-1.5 rounded-xl text-xs font-bold shadow-glow-indigo active:scale-95 transition flex items-center gap-1 px-2.5" title="Случайное аниме">
-        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-        <span class="text-[11px]">Рандом</span>
-      </button>
-      <div class="flex items-center gap-1.5 bg-white/5 border border-white/10 px-2.5 py-1.5 rounded-xl text-xs">
-        <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
-        <span id="user-name" class="font-semibold text-slate-200 text-xs">Гость</span>
+      <!-- Right Quick Actions: Random Button + User Badge -->
+      <div class="flex items-center gap-2">
+        <button onclick="rollRandom()" class="bg-gradient-to-r from-violet-600 to-indigo-600 text-white p-1.5 rounded-xl text-xs font-bold shadow-glow-indigo active:scale-95 transition flex items-center gap-1 px-2.5" title="Случайное аниме">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          <span class="text-[11px]">Рандом</span>
+        </button>
+        <div class="flex items-center gap-1.5 bg-white/5 border border-white/10 px-2.5 py-1.5 rounded-xl text-xs">
+          <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+          <span id="user-name" class="font-semibold text-slate-200 text-xs">Гость</span>
+        </div>
       </div>
     </div>
   </header>
 
   <!-- MAIN SCROLLABLE APP VIEW -->
-  <main class="max-w-md mx-auto px-4 pt-4 space-y-6">
+  <main class="max-w-4xl mx-auto px-3.5 sm:px-6 pt-4 space-y-6">
 
     <!-- ========================================== -->
     <!-- TAB 1: HOME (FEED & DISCOVERY) -->
@@ -189,7 +257,7 @@
           </h3>
           <button onclick="resetGenreFilter()" class="text-xs text-slate-400 hover:text-white underline">Сбросить</button>
         </div>
-        <div id="vibe-results-grid" class="grid grid-cols-2 gap-3 pt-1"></div>
+        <div id="vibe-results-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5 pt-1"></div>
       </div>
 
       <!-- CAROUSEL 1: AIRING ONGOINGS -->
@@ -255,7 +323,7 @@
         <span>Ищем аниме по базам…</span>
       </div>
 
-      <div id="search-results" class="grid grid-cols-2 gap-3.5 pt-1"></div>
+      <div id="search-results" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5 pt-1"></div>
     </section>
 
     <!-- ========================================== -->
@@ -516,41 +584,70 @@
       }
     }
 
+    function showToast(message) {
+      const t = document.getElementById('toast');
+      if (!t) return;
+      t.textContent = message;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2200);
+    }
+
+    function renderCardHTML(item, isCarousel = false) {
+      const id = item.shikimori_id || item.mal_id || item.id;
+      const title = item.title_ru || item.title_en || 'Без названия';
+      const score = item.score ? Number(item.score).toFixed(1) : '—';
+      const year = item.year || '';
+      const ep = item.episodes ? `${item.episodes} эп.` : (item.status === 'ongoing' ? 'Онгоинг' : '');
+      const img = item.image_url || FALLBACK_POSTER;
+
+      const cardClass = isCarousel 
+        ? 'media-card cursor-pointer group flex-shrink-0 select-none' 
+        : 'cursor-pointer group flex flex-col h-full select-none';
+
+      return `
+        <div class="${cardClass}" onclick="openCard(${id})">
+          <div class="relative rounded-2xl overflow-hidden aspect-[2/3] bg-dark-900 border border-white/10 shadow-card-elevated group-hover:border-indigo-500/60 group-hover:shadow-[0_12px_28px_rgba(99,102,241,0.3)] group-active:scale-[0.97] transition-all duration-300">
+            <img 
+              src="${img}" 
+              alt="${title}" 
+              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 will-change-transform" 
+              loading="lazy"
+              onerror="imgFallback(this)"
+            >
+            <div class="absolute inset-0 bg-gradient-to-t from-dark-950/90 via-dark-950/20 to-transparent pointer-events-none"></div>
+            
+            <div class="absolute top-2 left-2 glass-pill px-2 py-0.5 rounded-lg text-[10px] font-extrabold text-amber-300 flex items-center gap-1 shadow border border-amber-400/20">
+              <svg class="w-2.5 h-2.5 fill-amber-400" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              <span>${score}</span>
+            </div>
+
+            ${ep ? `
+              <div class="absolute bottom-2 right-2 glass-pill px-2 py-0.5 rounded-md text-[10px] font-bold text-slate-200 border border-white/10">
+                ${ep}
+              </div>
+            ` : ''}
+          </div>
+
+          <div class="pt-2 px-0.5 flex flex-col justify-between flex-1">
+            <div class="text-xs font-bold text-slate-100 group-hover:text-indigo-400 transition-colors line-clamp-2 leading-tight h-8" title="${title}">
+              ${title}
+            </div>
+            <div class="flex items-center justify-between text-[10px] font-semibold text-slate-400 mt-1">
+              <span>${year || '2026'}</span>
+              <span class="text-indigo-400 font-bold bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-500/20 text-[9px] uppercase">HD</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     function renderCarousel(elemId, items) {
       const container = document.getElementById(elemId);
       if (!items || items.length === 0) {
         container.innerHTML = '<div class="text-xs text-slate-500 py-3">Нет данных</div>';
         return;
       }
-      container.innerHTML = items.map(item => `
-        <div class="media-card cursor-pointer group flex-shrink-0" onclick="openCard(${item.shikimori_id || item.mal_id})">
-          <div class="relative rounded-2xl overflow-hidden aspect-[3/4] bg-dark-900 border border-white/10 shadow-card-elevated group-hover:border-indigo-500/50 group-active:scale-[0.96] transition-all duration-300">
-            <img 
-              src="${item.image_url}" 
-              alt="${item.title_ru || item.title_en}" 
-              class="w-full h-full object-cover group-hover:scale-105 transition-all duration-500" 
-              loading="lazy"
-              onerror="imgFallback(this)"
-            >
-            <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/20"></div>
-            <div class="absolute top-2 left-2 glass-pill px-2 py-0.5 rounded-lg text-[10px] font-bold text-amber-300 flex items-center gap-1 shadow">
-              <svg class="w-2.5 h-2.5 fill-amber-400" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-              ${item.score || '—'}
-            </div>
-            ${item.episodes ? `
-              <div class="absolute bottom-2 right-2 glass-pill px-2 py-0.5 rounded-md text-[10px] font-semibold text-slate-200">
-                ${item.episodes} эп.
-              </div>
-            ` : ''}
-          </div>
-          <div class="text-xs font-bold text-slate-100 mt-2 line-clamp-1 group-hover:text-indigo-400 transition">
-            ${item.title_ru || item.title_en}
-          </div>
-          <div class="text-[10px] font-medium text-slate-400 mt-0.5">
-            ${item.year ? item.year : 'Онгоинг'}
-          </div>
-        </div>
-      `).join('');
+      container.innerHTML = items.map(item => renderCardHTML(item, true)).join('');
     }
 
     // RANDOM ANIME ROLL
@@ -636,19 +733,7 @@
           return;
         }
 
-        grid.innerHTML = items.map(c => `
-          <div class="bg-dark-850 border border-white/10 rounded-2xl p-2.5 cursor-pointer hover:border-indigo-500/50 active:scale-[0.97] transition-all flex flex-col group" onclick="openCard(${c.shikimori_id || c.mal_id})">
-            <div class="aspect-[3/4] rounded-xl overflow-hidden relative bg-black shadow-card-elevated">
-              <img src="${c.image_url}" alt="${c.title_ru || c.title_en}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" onerror="imgFallback(this)">
-              <span class="absolute top-2 left-2 glass-pill px-2 py-0.5 rounded-lg text-[10px] font-bold text-amber-300 flex items-center gap-1 shadow">
-                <svg class="w-2.5 h-2.5 fill-amber-400" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                ${c.score || '—'}
-              </span>
-            </div>
-            <div class="mt-2 text-xs font-bold line-clamp-1 text-slate-100 group-hover:text-indigo-400 transition">${c.title_ru || c.title_en}</div>
-            <div class="text-[10px] text-slate-400 mt-auto pt-1 font-medium">${c.year || ''} ${c.episodes ? `· ${c.episodes} эп.` : ''}</div>
-          </div>
-        `).join('');
+        grid.innerHTML = items.map(c => renderCardHTML(c, false)).join('');
 
         section.scrollIntoView({ behavior: 'smooth' });
       } catch (e) {
@@ -693,24 +778,7 @@
           return;
         }
 
-        resultsEl.innerHTML = cards.map(c => `
-          <div class="bg-dark-850 border border-white/10 rounded-2xl p-2.5 cursor-pointer hover:border-indigo-500/50 active:scale-[0.97] transition-all flex flex-col group" onclick="openCard(${c.shikimori_id || c.mal_id})">
-            <div class="aspect-[3/4] rounded-xl overflow-hidden relative bg-black shadow-card-elevated">
-              <img 
-                src="${c.image_url}" 
-                alt="${c.title_ru || c.title_en}" 
-                class="w-full h-full object-cover group-hover:scale-105 transition duration-500" 
-                onerror="imgFallback(this)"
-              >
-              <span class="absolute top-2 left-2 glass-pill px-2 py-0.5 rounded-lg text-[10px] font-bold text-amber-300 flex items-center gap-1 shadow">
-                <svg class="w-2.5 h-2.5 fill-amber-400" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                ${c.score || '—'}
-              </span>
-            </div>
-            <div class="mt-2 text-xs font-bold line-clamp-1 text-slate-100 group-hover:text-indigo-400 transition">${c.title_ru || c.title_en}</div>
-            <div class="text-[10px] text-slate-400 mt-auto pt-1 font-medium">${c.year || ''} ${c.episodes ? `· ${c.episodes} эп.` : ''}</div>
-          </div>
-        `).join('');
+        resultsEl.innerHTML = cards.map(c => renderCardHTML(c, false)).join('');
       } catch (e) {
         statusEl.classList.add('hidden');
       }
@@ -759,9 +827,10 @@
           if (data.kodik.episodes && Object.keys(data.kodik.episodes).length > 0) {
             epWrapper.classList.remove('hidden');
             const epKeys = Object.keys(data.kodik.episodes).map(Number).sort((a,b)=>a-b);
-            epList.innerHTML = epKeys.map(epNum => `
+            epList.innerHTML = epKeys.map((epNum, idx) => `
               <button 
-                class="px-3.5 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition active:scale-95"
+                id="ep-btn-${epNum}"
+                class="ep-btn px-3 py-1.5 rounded-xl ${idx === 0 ? 'bg-gradient-to-tr from-violet-600 to-indigo-600 text-white border-indigo-400 shadow-glow-indigo' : 'bg-white/5 border border-white/10 text-slate-200'} text-xs font-bold hover:bg-indigo-600 hover:text-white transition active:scale-95"
                 onclick="changeEpisode('${data.kodik.episodes[epNum]}', ${epNum})"
               >
                 ${epNum}
@@ -784,6 +853,17 @@
       haptic();
       const videoFrame = document.getElementById('video-frame');
       videoFrame.src = url;
+
+      document.querySelectorAll('.ep-btn').forEach(b => {
+        b.className = 'ep-btn px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-slate-200 text-xs font-bold hover:bg-indigo-600 hover:text-white transition active:scale-95';
+      });
+      const activeBtn = document.getElementById(`ep-btn-${epNum}`);
+      if (activeBtn) {
+        activeBtn.className = 'ep-btn px-3 py-1.5 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 text-white border border-indigo-400 text-xs font-bold shadow-glow-indigo transition active:scale-95';
+      }
+
+      showToast(`Включена ${epNum} серия 🎬`);
+
       if (currentCard) {
         fetch('/api/library/episode', {
           method: 'POST',
@@ -806,6 +886,20 @@
     async function setStatus(status) {
       if (!currentCard) return;
       haptic();
+      const statusLabels = {
+        'watching': 'Смотрю 👀',
+        'plan': 'В планах 📌',
+        'completed': 'Просмотрено ✅',
+        'dropped': 'Брошено ❌'
+      };
+
+      ['watching', 'plan', 'completed'].forEach(s => {
+        const btn = document.getElementById(`btn-set-${s}`);
+        if (btn) btn.classList.remove('status-btn-active');
+      });
+      const activeBtn = document.getElementById(`btn-set-${status}`);
+      if (activeBtn) activeBtn.classList.add('status-btn-active');
+
       try {
         await fetch('/api/library/status', {
           method: 'POST',
@@ -818,7 +912,8 @@
             status: status
           })
         });
-        tg?.showPopup?.({ message: `Статус сохранён: ${status}` });
+        showToast(`Статус: ${statusLabels[status] || status}`);
+        tg?.showPopup?.({ message: `Статус сохранён: ${statusLabels[status] || status}` });
       } catch (e) {
         console.error(e);
       }
@@ -830,17 +925,29 @@
     document.getElementById('btn-toggle-fav').onclick = async () => {
       if (!currentCard) return;
       haptic();
-      await fetch('/api/library/favorite', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: user.id,
-          mal_id: currentCard.shikimori_id || currentCard.mal_id,
-          title: currentCard.title_ru || currentCard.title_en,
-          lang: 'ru'
-        })
-      });
-      tg?.showPopup?.({ message: 'Обновлено в избранном ⭐' });
+      try {
+        const res = await fetch('/api/library/favorite', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: user.id,
+            mal_id: currentCard.shikimori_id || currentCard.mal_id,
+            title: currentCard.title_ru || currentCard.title_en,
+            lang: 'ru'
+          })
+        });
+        const data = await res.json();
+        const favBtn = document.getElementById('btn-toggle-fav');
+        if (data && data.is_favorite) {
+          favBtn.classList.add('status-btn-active');
+          showToast('Добавлено в избранное ⭐');
+        } else {
+          favBtn.classList.remove('status-btn-active');
+          showToast('Удалено из избранного');
+        }
+      } catch (e) {
+        console.error(e);
+      }
     };
 
     // LIBRARY

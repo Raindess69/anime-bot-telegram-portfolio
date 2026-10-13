@@ -1,0 +1,102 @@
+# EnjoyAnime — Текущее состояние проекта и инструкция для будущих сессий
+
+> **Дата фиксации:** 13 октября 2026 г.  
+> **Репозиторий:** `https://github.com/Raindess69/anime-bot-telegram-portfolio.git`  
+> **Основная ветка:** `main`  
+> **Рабочая директория:** `C:\Users\MainAdmin\Desktop\Claude\anime-bot`  
+
+---
+
+## 1. Что сделано в текущей сессии
+
+### 1.1. Telegram Mini App (TMA) & Web API
+1. **Создан легковесный Web API (`web_api.py`)**:
+   - На базе **FastAPI** + **Uvicorn**, встроен в ту же кодовую базу и использует существующие SQLite сервисы (`db/user_titles.py`, `services/aggregator.py`, `services/shikimori.py`, `services/kodik.py`).
+   - Эндпоинты:
+     - `GET /api/feed` — подборки (онгоинги, популярное, топ рейтинга, hero-баннер дня).
+     - `GET /api/search?q=...` — поиск аниме по базам.
+     - `GET /api/anime/{id}` — карточка тайтла с плеером Kodik и списком доступных серий.
+     - `GET /api/vibe` — умная фильтрация по эпохам (2020-е, 2010-е), минимальному рейтингу и жанрам.
+     - `GET /api/random` — быстрое открытие случайного аниме.
+     - `GET /api/library`, `POST /api/library/status`, `POST /api/library/episode`, `POST /api/library/favorite` — синхронизация пользовательской библиотеки (Смотрю, В планах, Просмотрено, Избранное).
+     - Раздача статики `GET /` -> `static/index.html`.
+
+2. **Создан интерфейс Mini App (`static/index.html`)**:
+   - Dark-mode дизайн (Tailwind CSS, шрифт *Plus Jakarta Sans*, стекломорфизм, неоновые акценты).
+   - Встроенный кинотеатральный плеер Kodik с выбором серий и озвучек.
+   - Адаптивный респонсив (`max-w-4xl`): идеальный вид как на мобильных клиентах Telegram (iOS/Android), так и на Telegram Desktop / веб-браузере.
+   - Интеграция с Telegram WebApp SDK (`Telegram.WebApp.ready()`, `expand()`, `HapticFeedback`).
+
+### 1.2. Исправление визуальных дефектов и багов
+1. **Устранены 404 битые постеры**:
+   - Заменены переадресации `shikimori.one` на прямой рабочий домен `shikimori.io`.
+   - В API внедрена фильтрация: тайтлы с пустыми или плейсхолдерными картинками (`missing_original.jpg` со штампом 404) исключаются из подборок (36 из 36 карточек теперь с подтвержденными постерами).
+   - Создан offline-векторный SVG fallback постер (логотип EnjoyAnime на темном градиенте), предотвращающий любые поломки картинок в интерфейсе.
+2. **Очистка описаний от BBCode и HTML**:
+   - На бэкенде в `services/shikimori.py` добавлен метод `_clean_bbcode()` (удаляет теги `[character=...]`, `[/character]`, `[anime]`, `[b]` и т.д., сохраняя имена и полезный текст).
+   - На фронтенде добавлена клиентская функция `sanitizeDescription()`, очищающая описание даже при локальном кэше.
+   - Заголовок блока изменен с технического *"Синопсис"* на понятное *"Описание"*.
+3. **Устранена "рваность" карточек**:
+   - Создана единая функция `renderCardHTML()` для каруселей, поиска и вайб-фильтра.
+   - Зафиксирована пропорция 2:3 (классический формат аниме-постеров).
+   - Зафиксирована высота заголовков тайтлов (`h-8`, 2 строки с line-clamp), благодаря чему все карточки в строках и сетках выровнены идеально по пикселям.
+4. **Интерактивные кнопки и уведомления**:
+   - Добавлены toast-уведомления (`showToast()`) при смене статуса или добавлении в избранное.
+   - Добавлена визуальная подсветка активной серии в плеере (`#ep-btn-{N}`) и активного статуса в библиотеке (`.status-btn-active`).
+
+---
+
+## 2. Архитектура и структура файлов
+
+```text
+C:\Users\MainAdmin\Desktop\Claude\anime-bot\
+├── bot.py                        # Точка входа Telegram-бота + фоновый запуск web_api
+├── web_api.py                    # FastAPI сервер для Telegram Mini App
+├── static/
+│   └── index.html                # Главное SPA приложение TMA (HTML5 + Tailwind + JS)
+├── services/
+│   ├── shikimori.py              # Shikimori API v1: поиск, топы, сезоны, очистка BBCode
+│   ├── kodik.py                  # Kodik API: плеер, серии, озвучки
+│   ├── aggregator.py             # Агрегатор каталогов и метаданных
+│   └── anilist.py                # AniList GraphQL клиент
+├── db/
+│   ├── database.py               # Инициализация SQLite базы bot.db
+│   ├── user_titles.py            # Работа с библиотекой пользователя
+│   └── subscriptions.py          # Подписки на онгоинги
+├── handlers/
+│   ├── commands.py               # /start, /help, /app, /webapp
+│   └── menu.py                   # Меню поиска, навигация, списки
+├── ARCHITECTURE_AND_ROADMAP_TMA.md # Долгосрочный roadmap развития TMA
+├── PROJECT_SPEC_FOR_ROADMAP.md    # Технический паспорт проекта
+└── HANDOVER_AND_STATE.md         # Данный файл состояния
+```
+
+---
+
+## 3. Команды для запуска
+
+### Локальный запуск Mini App (только веб-сервер):
+```powershell
+cd C:\Users\MainAdmin\Desktop\Claude\anime-bot
+.venv\Scripts\python.exe -m uvicorn web_api:app --host 127.0.0.1 --port 8080 --reload
+```
+Доступно в браузере: `http://127.0.0.1:8080`
+
+### Полный запуск (Telegram бот + Mini App вместе):
+```powershell
+cd C:\Users\MainAdmin\Desktop\Claude\anime-bot
+.venv\Scripts\python.exe bot.py
+```
+*Бот запускает polling Telegram, настраивает кнопку MenuButtonWebApp и поднимает uvicorn на порту 8080.*
+
+---
+
+## 4. Следующие шаги (План для будущих сессий)
+
+1. **Валидация Telegram `initData`**:
+   - Внедрить проверку HMAC-SHA256 подписи данных пользователя из `Telegram.WebApp.initData` на бэкенде через токен бота (`BOT_TOKEN`).
+2. **Продвинутый плеер и сохранение прогресса**:
+   - Привязка таймкода через `postMessage` от фрейма Kodik к `POST /api/playback/progress`.
+   - Автоматическая отметка просмотренной серии при достижении 85% хронометража.
+3. **Полноценная миграция базы на PostgreSQL** *(по мере роста нагрузки)*:
+   - Перенос текущей `bot.db` (SQLite) в схему PostgreSQL с таблицами пользователей, библиотеки и истории просмотров (DDL расписан в `ARCHITECTURE_AND_ROADMAP_TMA.md`).
