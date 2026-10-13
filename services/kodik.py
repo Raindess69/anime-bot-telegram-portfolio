@@ -12,7 +12,7 @@ import httpx
 
 from config import settings
 
-BASE_URL = "https://kodikapi.com"
+BASE_URL = "https://kodik-api.com"
 _TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 _log = logging.getLogger(__name__)
 
@@ -25,6 +25,7 @@ async def find_by_ids(
     *,
     mal_id: int | None = None,
     shikimori_id: int | None = None,
+    title: str | None = None,
 ) -> dict | None:
     """Return {max_ep, url, episode_url} for the newest available episode, or None.
 
@@ -34,7 +35,7 @@ async def find_by_ids(
     that latest episode when we can extract it; `url` is the series base URL
     used as a fallback.
     """
-    if not enabled() or (not mal_id and not shikimori_id):
+    if not enabled() or (not mal_id and not shikimori_id and not title):
         return None
     params: dict[str, str | int] = {
         "token": settings.kodik_token,
@@ -45,15 +46,27 @@ async def find_by_ids(
         params["shikimori_id"] = shikimori_id
     elif mal_id:
         params["mal_id"] = mal_id
+    elif title:
+        params["title"] = title
+
+    results = []
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         try:
             resp = await client.get(f"{BASE_URL}/search", params=params)
             resp.raise_for_status()
+            results = resp.json().get("results") or []
         except (httpx.HTTPError, httpx.TimeoutException) as e:
             _log.info("Kodik search failed: %s", e)
-            return None
-        data = resp.json()
-    results = data.get("results") or []
+
+        if not results and title and (shikimori_id or mal_id):
+            try:
+                p2 = {"token": settings.kodik_token, "title": title, "limit": 50, "with_episodes": "true"}
+                resp2 = await client.get(f"{BASE_URL}/search", params=p2)
+                resp2.raise_for_status()
+                results = resp2.json().get("results") or []
+            except Exception:
+                pass
+
     best_ep = 0
     best_url: str | None = None
     best_item: dict | None = None
@@ -67,9 +80,7 @@ async def find_by_ids(
             best_item = item
     if best_ep <= 0 or not best_item:
         return None
-    # Prefer a direct episode link when we can find one — makes the scheduler
-    # notification land the user on the actual new episode instead of the
-    # series root.
+
     episode_url = _extract_episode_link(best_item, best_ep) or best_url
     return {"max_ep": best_ep, "url": best_url, "episode_url": episode_url}
 
@@ -104,6 +115,7 @@ async def get_player(
     *,
     mal_id: int | None = None,
     shikimori_id: int | None = None,
+    title: str | None = None,
     translation_id: int | None = None,
 ) -> dict | None:
     """Full player payload for a card: base URL + per-episode URLs + translation.
@@ -111,7 +123,7 @@ async def get_player(
     Returns {url, episodes: {n: url}, last_ep, translation, translation_id, translations} or None.
     If translation_id is specified, picks that variant; otherwise picks the highest last_episode.
     """
-    if not enabled() or (not mal_id and not shikimori_id):
+    if not enabled() or (not mal_id and not shikimori_id and not title):
         return None
     params: dict[str, str | int] = {
         "token": settings.kodik_token,
@@ -123,15 +135,34 @@ async def get_player(
         params["shikimori_id"] = shikimori_id
     elif mal_id:
         params["mal_id"] = mal_id
+    elif title:
+        params["title"] = title
+
+    results = []
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         try:
             resp = await client.get(f"{BASE_URL}/search", params=params)
             resp.raise_for_status()
+            results = resp.json().get("results") or []
         except (httpx.HTTPError, httpx.TimeoutException) as e:
             _log.info("Kodik player fetch failed: %s", e)
-            return None
-        data = resp.json()
-    results = data.get("results") or []
+
+        # Fallback to search by title if id returned nothing
+        if not results and title and (shikimori_id or mal_id):
+            try:
+                p2 = {
+                    "token": settings.kodik_token,
+                    "title": title,
+                    "limit": 50,
+                    "with_episodes": "true",
+                    "with_material_data": "false",
+                }
+                resp2 = await client.get(f"{BASE_URL}/search", params=p2)
+                resp2.raise_for_status()
+                results = resp2.json().get("results") or []
+            except Exception:
+                pass
+
     if not results:
         return None
 

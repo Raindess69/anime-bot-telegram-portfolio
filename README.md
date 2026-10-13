@@ -1,163 +1,206 @@
-# Anime Telegram Bot
+# 🎌 EnjoyAnime — Telegram Bot & Telegram Mini App (TMA)
 
-Trilingual (RU / EN / UА) Telegram bot that unifies anime search across seven
-public sources, notifies users about new episodes, and lets them watch them
-without leaving the chat.
-
-Built on **aiogram v3** with async orchestration, SQLite persistence,
-FSM-based UI wizards, and a full internationalization layer.
+> **Единый мастер-документ проекта (Status, Architecture & Next Session Roadmap)**  
+> **Основной репозиторий:** `https://github.com/Raindess69/anime-bot-telegram-portfolio.git` (`main`)  
+> **Бот:** `@AnimeSpaceFree_bot` (публичный инлайн `@EnjoyAnimeBot`)  
+> **Инфраструктура:** $0 budget (remote sandbox `muse.ai` + Pinggy/Cloudflare HTTPS tunnels)
 
 ---
 
-## What it does
+## 📌 Оглавление
+1. [Обзор и концепция системы](#1-обзор-и-концепция-системы)
+2. [Текущий стек и архитектура](#2-текущий-стек-и-архитектура)
+3. [Что уже полностью готово (Changelog & Features)](#3-что-уже-полностью-готово)
+4. [Структура базы данных (SQLite `bot.db`)](#4-структура-базы-данных)
+5. [Пайплайн агрегации контента и плееров](#5-пайплайн-агрегации-контента-и-плееров)
+6. [Инструкция по запуску и окружение](#6-инструкция-по-запуску-и-окружение)
+7. [Детальный план на следующую сессию (Roadmap)](#7-детальный-план-на-следующую-сессию)
 
-| Feature | How it works |
-|---|---|
-| Search by title | Fans out queries to Jikan (MAL), AniList and Shikimori in parallel, merges results by MAL id, ranks source-appropriately per language. |
-| Watch links | For each result, enriches with Anilibria (legal RU stream), Yummy Anime (RU catalog), Crunchyroll (global), and Kodik (in-Telegram episode picker). |
-| New-episode alerts | Every 12 h, probes 4 sources per subscription (Anilibria / Yummy / Kodik / Shikimori), pings the user with the highest episode number found and a button per source. |
-| Vibe pick | FSM wizard asks year → score → genre → format, then runs Jikan + AniList with progressive filter relaxation. |
-| Top charts | Multi-source fallback: Jikan → AniList → Shikimori (whichever answers first with results). |
-| Random | Same fallback chain, one-shot. |
-| Search history | Last 10 queries per user, deduped consecutively, one-tap to repeat. |
-| Telegram Stars donations | `/donate` with 4 tiers, full `pre_checkout` + `successful_payment` flow. |
-| Inline mode | `@bot_name title` in any chat → up to 20 photo results with Watch buttons. |
+---
 
-## Architecture
+## 1. Обзор и концепция системы
 
-```
-bot.py                    ── entry point, wires routers + scheduler task
-config.py                 ── pydantic-settings (.env-driven)
-handlers/
-  commands.py             ── /start, /help, /lang, /search, /subs
-  menu.py                 ── persistent reply-keyboard + vibe/top/random FSM
-  search.py               ── text search, keyboard builder, card renderer
-  callbacks.py            ── nav, episode pickers (Anilibria + Kodik), sub toggle
-  history.py              ── /history + repeat-search callbacks
-  donate.py               ── /donate + Telegram Stars payment flow
-  inline.py               ── @bot inline query mode
-services/
-  aggregator.py           ── search fan-out, merge, ranking, enrichment
-  jikan.py                ── MyAnimeList via jikan.moe (metadata, top, random)
-  anilist.py              ── AniList GraphQL (search, top, seasonal, external links)
-  shikimori.py            ── Russian titles + fallback source
-  anilibria.py            ── AniLiberty V1 REST (episodes, torrents, direct player URLs)
-  yummy.py                ── HTML scraping of yummyanime.tv with title fuzzy match
-  kodik.py                ── Kodik API (in-Telegram episode player)
-  scheduler.py            ── periodic multi-source episode probe → notification fan-out
-db/
-  users.py                ── language preference
-  subscriptions.py        ── multi-source subscription schema with auto-migration v1→v2
-  history.py              ── search history ring-buffer per user
-locales/                  ── ru.py / en.py / uk.py + t(key, lang, **kwargs)
-models/anime.py           ── AnimeCard pydantic model
-utils/
-  cache.py                ── TTL cache for search results
-  formatting.py           ── HTML-safe card rendering
+**EnjoyAnime** — это гибридная экосистема для поиска, трекинга и мгновенного просмотра аниме прямо в Telegram:
+1. **Telegram-бот (aiogram 3):** текстовый поиск, меню, история, поддержка Stars, инлайн-режим, фоновый опрос онгоингов и push-уведомления о выходе новых серий.
+2. **Telegram Mini App (TMA / FastAPI + SPA):** современный адаптивный веб-интерфейс в стиле Netflix/Кинопоиск, открывающийся по кнопке меню или deep-link прямо в клиенте Telegram (iOS, Android, Desktop, Web). Включает плеер, ленту сезонов, библиотечный трекер и фильтры.
+
+---
+
+## 2. Текущий стек и архитектура
+
+```text
+Telegram Client (iOS / Android / Desktop / Web)
+ ├── Текстовый чат с ботом (aiogram 3.4+)
+ │    ├── /start, /search, меню, история, Stars донаты
+ │    ├── Фоновые уведомления о новых сериях (scheduler)
+ │    └── Кнопка «📺 Смотреть аниме» (Menu Button WebApp)
+ │
+ └── Mini App (Telegram WebView)
+      └── SPA Frontend (HTML5, Tailwind CSS, Plus Jakarta Sans, JS)
+           └── REST API (FastAPI + Uvicorn на порту 8080)
+                ├── Auth: HMAC-SHA256 валидация Telegram initData
+                ├── Feed: Онгоинги, Популярное, Топы, Hero-баннер дня
+                ├── Player & Episodes Hub: Kodik iframe + AniLibria/Shikimori
+                ├── Library: Смотрю, В планах, Просмотрено, Избранное (+1 эп.)
+                ├── Continue Watching: быстрый возврат к недосмотренному
+                └── Vibe Wizard: умный подбор по эпохам, жанрам и рейтингу
 ```
 
-### Design decisions worth reading the code for
+### Структура файлов проекта:
+```text
+anime-bot/
+├── bot.py                  # Точка входа: запуск aiogram + uvicorn web_api + watchdog
+├── web_api.py              # FastAPI REST API бэкенд для Mini App
+├── static/
+│   └── index.html          # SPA фронтенд Mini App (интерфейс, плеер, трекер)
+├── config.py               # Pydantic BaseSettings (.env: BOT_TOKEN, KODIK_TOKEN и т.д.)
+├── tunnel.py               # Управление туннелями (Pinggy SSH 443 + Cloudflare)
+├── tunnel_keeper.sh        # Внешний bash-супервизор туннеля для muse.ai
+├── restart_bot.sh          # Скрипт перезапуска бота при ротации прокси
+├── services/
+│   ├── aggregator.py       # Оркестратор параллельного поиска с fallback
+│   ├── shikimori.py        # Shikimori v1 API (русские названия, постеры, очистка BBCode)
+│   ├── kodik.py            # Kodik API (плеер, озвучки, серии)
+│   ├── anilibria.py        # AniLibria API (HLS потоки, UUID серий, .torrent файлы)
+│   ├── anilist.py          # AniList GraphQL (метаданные, стримы, трейлеры)
+│   ├── jikan.py            # MyAnimeList REST API v4
+│   ├── yummy.py            # YummyAnime парсер
+│   └── scheduler.py        # Фоновый опрос подписок (проверка новых серий)
+├── db/
+│   ├── database.py         # Инициализация SQLite базы bot.db
+│   ├── user_titles.py      # Таблица трекера библиотеки user_titles
+│   ├── subscriptions.py    # Таблица подписок subscriptions v2
+│   ├── users.py            # Языковые предпочтения пользователей
+│   └── history.py          # Кольцевой буфер истории поисковых запросов
+├── handlers/
+│   ├── commands.py         # Команды /start, /help, /app, /lang
+│   ├── search.py           # Поиск и рендеринг карточек бота с TMA deep-link
+│   ├── menu.py             # Главное меню бота и FSM-визарды
+│   ├── callbacks.py        # Инлайн-кнопки (эпизоды, торренты, статусы)
+│   ├── mylist.py           # Браузер трекера в текстовом боте
+│   ├── donate.py           # Telegram Stars платежи
+│   └── inline.py           # Инлайн-режим @bot
+├── locales/                # Локализация ru / uk / en
+└── README.md               # Данный единый документ проекта
+```
 
-- **Search ranking is language-aware.** RU users get Shikimori first (Russian
-  titles), EN users get Jikan first, UK users get a Ukrainian→Russian-ish
-  translit variant added to the query pool so `і`/`ї`/`є` don't tank recall.
-  See `services/aggregator.py::_search_ru` / `_search_uk` / `_search_en`.
+---
 
-- **Anilibria matching threshold + compact-string shortcut.** Naive
-  `SequenceMatcher.ratio()` treats "Blue Lock" vs "Blue Box" as 0.67 similar
-  and produces confident wrong matches. Fix: strip spaces/punctuation
-  (`_compact`) and floor the score at 0.9 when one compact string is a
-  substring of the other. So `Ao Ashi` ⇔ `Aoashi` = 1.0 (compact identical),
-  but the fake `Blue Lock` ⇔ `Blue Box` hit stays below the 0.75 threshold.
-  See `services/anilibria.py::find_release`.
+## 3. Что уже полностью готово
 
-- **Yummy anti-collision.** For franchises with 10 similar-slug titles
-  (`mushoku-tensei`, `mushoku-tensei-2`, `mushoku-tensei-special`), the
-  fuzzy match kept returning the same "longest slug". Added a top-1 vs
-  top-2 margin check: if the winner is only marginally better, fall back
-  to the search page instead. See `services/yummy.py::find_direct_link`.
+### 3.1. Mini App UI & Player Drawer
+* **Новая компоновка модалки тайтла:**
+  1. **Шапка:** постер, название, оценка, год, формат, количество серий, бейджи жанров.
+  2. **Главная кнопка действия (Hero Watch Button):** большая неоновая кнопка `[ ▶ Смотреть 1 серию ]` (или `[ ▶ Продолжить: N серия ]`), плавно скроллящая к плееру.
+  3. **Плеерный хаб:**
+     - При наличии видео: встраивается адаптивный видеоплеер.
+     - Селектор озвучек (переключение Studio Band, AniLibria, Субтитры и т.д. в 1 клик).
+     - Резервный блок прямого перехода: прямые кнопки для просмотра на AniLibria и Shikimori.
+  4. **Всегда доступная сетка серий:** кнопки серий `1, 2, ... N` отображаются **всегда** (даже без API-токенов). Клик по серии переключает плеер, обновляет бейдж активной серии и синхронизирует прогресс в библиотеке.
+  5. **Описание:** полный синопсис с автоматической очисткой от BBCode-тегов (`[character]`, `[anime]`, `[b]`).
+  6. **Трекер библиотеки:** 4 кнопки статуса («Смотрю», «В планах», «Просмотрено», «В избранное») с визуальной активной подсветкой и haptic feedback.
 
-- **Subscription schema auto-migration.** v1 rows keyed on `(user_id,
-  anilibria_code)`. v2 keys on `(user_id, mal_id)` and stores per-source
-  columns. `db/subscriptions.py::_ensure_schema` runs
-  `ALTER RENAME → CREATE new → INSERT SELECT → DROP old` on startup if it
-  detects v1.
+### 3.2. Лента, Поиск и Профиль
+* **Секция «Продолжить просмотр»:** персональная карусель на главном экране с сохранёнными постерами и кнопкой мгновенного продолжения с последней серии.
+* **Фиксы постеров:** заменены битые домены на `shikimori.io`, встроен офлайн векторный SVG-fallback, исключены карточки с 404-картинками.
+* **Идеальная верстка:** строгая пропорция постеров 2:3, фиксированная высота заголовков `h-8` (2 строки) — исключена «рваность» сетки.
+* **HMAC-SHA256 безопасность:** автоматическая валидация `Telegram.WebApp.initData` через секретный ключ бота, защита от подделки `user_id`.
+* **Deep Links:** поддержка прямых переходов `#title/{id}` и `startapp=w_{title_id}_{episode_id}`.
+* **Профиль:** окно аналитики с количеством просмотренных серий и распределением по спискам.
 
-- **Kodik episode picker fits into Telegram's keyboard limits.** 10 episodes
-  per page (5×2), inline pagination via `kodep:{idx}:{page}` callback data,
-  falls back to a direct URL button when the title has only one episode.
-  See `handlers/callbacks.py::_kodik_episodes_keyboard`.
+### 3.3. Серверная инфраструктура ($0 бюджет на muse.ai)
+* **Авто-туннель Pinggy 443 + Cloudflare:** `tunnel.py` с постоянным чтением stdout и авто-реконнектом за 3с.
+* **Динамическая синхронизация Menu Button:** фоновый поток `watch_url_changes()` в `bot.py` сверяет URL каждые 4с и мгновенно обновляет кнопку меню Telegram без перезапуска процесса.
+* **Watchdog ротации прокси:** при ошибке `407 Proxy Authentication Required` бот корректно завершается, и внешний watchdog перезапускает его через `restart_bot.sh` в свежей сессии.
 
-- **Scheduler probes all sources in parallel per subscription.** Only
-  surfaces "▶ Kodik" / "▶ Anilibria" buttons that actually reached the max
-  episode found across sources — cheaper sources sometimes lag by one
-  release cycle. See `services/scheduler.py::check_new_episodes`.
+---
 
-- **AniList `externalLinks` is a batched GraphQL call.** One round-trip
-  enriches Crunchyroll URLs for all 10 cards. Kodik has no batch endpoint,
-  so it's a fan-out gathered with `asyncio.gather`. See
-  `services/aggregator.py::_fill_streaming_links`.
+## 4. Структура базы данных (SQLite `bot.db`)
 
-- **Router order matters in aiogram.** Persistent-menu button texts must
-  match before the `text_search` catch-all, otherwise pressing "🔥 Топы"
-  would trigger a search for the literal string. See `bot.py`.
+1. **`users`:** `user_id` (PK), `lang` (ru/uk/en).
+2. **`user_titles` (Библиотека):**
+   - `user_id`, `mal_id` (PK: `user_id, mal_id`).
+   - `title`, `lang`, `status` (`watching`, `completed`, `plan`, `dropped`).
+   - `current_episode` (INTEGER), `is_favorite` (0/1), `image_url` (TEXT), `updated_at`.
+3. **`subscriptions` v2 (Подписки на онгоинги):**
+   - `id` (PK), `user_id`, `mal_id` (UNIQUE: `user_id, mal_id`), `title`.
+   - `anilibria_code`, `yummy_url`, `shikimori_id`, `last_episode`, `created_at`.
+4. **`search_history`:** кольцевой буфер последних 10 поисковых запросов пользователя.
 
-- **State-safe locale switching.** After a language change we resend the
-  reply-keyboard immediately, otherwise the visible menu button labels
-  stay stuck on the previous locale.
+---
 
-## Stack
+## 5. Пайплайн агрегации контента и плееров
 
-`Python 3.11+`, `aiogram 3.x`, `httpx`, `aiosqlite`, `pydantic v2`,
-`pydantic-settings`. No web framework, no ORM, no message broker — the
-whole thing is single-process async.
+1. **Поиск и метаданные:**
+   - **Shikimori:** приоритет для RU-пользователей (русские названия, постеры, синопсис).
+   - **AniList GraphQL:** быстрые ответы, топы сезонов, стриминг-ссылки Crunchyroll.
+   - **Jikan (MAL):** фильтры, рейтинги, жанровый поиск с fallback-ротатором.
+2. **Видео и плееры:**
+   - **Kodik:** мультиязычные переводы, прямой iframe, per-episode URLs (требуется партнерский токен `KODIK_TOKEN`).
+   - **AniLibria:** бесплатный API без токенов, HLS видеопотоки (480p, 720p, 1080p), UUID серий, .torrent файлы, а также встроенный `external_player`.
+   - **Shikimori / AniLibria ссылки:** прямой переход в 1 клик при отсутствии встроенного плеера.
 
-## Setup
+---
 
+## 6. Инструкция по запуску и окружение
+
+### Локально на Windows:
+```powershell
+# 1. Перейти в папку бота
+cd C:\Users\MainAdmin\Desktop\Claude\anime-bot
+
+# 2. Активировать venv и запустить бота вместе с Web API:
+.\.venv\Scripts\python.exe bot.py
+
+# Или запустить только Web API (для верстки и тестов фронтенда):
+.\.venv\Scripts\python.exe -m uvicorn web_api:app --host 127.0.0.1 --port 8080 --reload
+```
+Веб-интерфейс доступен по адресу: `http://127.0.0.1:8080`.
+
+### На удалённом сервере / muse.ai:
 ```bash
-python -m venv .venv
-# Windows
-.venv\Scripts\activate
-# Linux / macOS
-source .venv/bin/activate
+# Обновление из GitHub:
+git pull origin main
 
-pip install -r requirements.txt
-
-cp .env.example .env
-# edit .env: set BOT_TOKEN from @BotFather
-
-python bot.py
+# Перезапуск туннеля и бота:
+bash restart_bot.sh
 ```
 
-On Windows there's a helper: `run.bat` creates the venv, installs deps and
-launches the bot.
+### Переменные окружения (`.env`):
+* `BOT_TOKEN` — токен Telegram-бота из `@BotFather` (обязательно).
+* `DB_PATH` — путь к файлу SQLite (`bot.db`, по умолчанию).
+* `DEFAULT_LANG` — язык по умолчанию (`ru`).
+* `KODIK_TOKEN` — партнерский токен Kodik (`https://kodik.cc/`, опционально, активирует полный каталог озвучек Kodik).
+* `MINI_APP_URL` — текущий публичный URL Mini App (обновляется туннелем автоматически).
 
-## Configuration
+---
 
-All settings live in `.env` (see `.env.example`).
+## 7. Детальный план на следующую сессию (Roadmap)
 
-| Var | Required | Purpose |
-|---|---|---|
-| `BOT_TOKEN` | yes | Telegram Bot API token |
-| `DB_PATH` | no | SQLite file location (default `bot.db`) |
-| `DEFAULT_LANG` | no | Locale for new users: `ru` \| `en` \| `uk` |
-| `KODIK_TOKEN` | no | Enables in-Telegram episode player + Kodik scheduler probe. Register free at https://kodik.cc/ |
+### 🎯 Приоритет 1 (P0): Встроенный плеер AniLibria HLS (Работает без токенов)
+- **Цель:** дать 100% пользователям возможность смотреть серии прямо внутри Telegram без необходимости регистрировать партнерский токен Kodik.
+- **Реализация:**
+  1. В `static/index.html` подключить легковесную библиотеку `hls.js` (через CDN).
+  2. Добавить адаптивный нативный HTML5 `<video>` элемент с кастомными кнопками (Play/Pause, громкость, полноэкранный режим, селектор качества 720p/1080p).
+  3. В `web_api.py` передавать прямые HLS ссылки из `anilibria.find_release` (`hls_720`, `hls_1080`).
 
-## Commands
+### 🎯 Приоритет 2 (P0): Автоматический трекинг таймкодов (Heartbeat)
+- **Цель:** запоминать точную секунду, на которой пользователь остановился, и выводить полосу прогресса (progress bar) в блоке «Продолжить просмотр».
+- **Реализация:**
+  1. Слушатель события `timeupdate` на видеоплеере с троттлингом (отправка `POST /api/library/progress` раз в 15-20 сек).
+  2. Автоматическая отметка серии как просмотренной при достижении >85% хронометража.
+  3. Возобновление воспроизведения с сохранённой секунды при нажатии «Продолжить».
 
-| Command | Effect |
-|---|---|
-| `/start` | Welcome + language picker + persistent menu |
-| `/help` | Full command reference |
-| `/lang` | Switch UI language |
-| `/search <query>` | Search anime |
-| `/subs` | List subscriptions |
-| `/history` | Last 10 search queries |
-| `/donate` | Support the bot via Telegram Stars |
-| any text | Same as `/search` |
-| `@bot query` | Inline mode in any chat |
+### 🎯 Приоритет 3 (P1): Push-уведомления о новых сериях из шедулера
+- **Цель:** когда выходит новая серия аниме из «Смотрю» или «Избранное», бот присылает сообщение с кнопкой прямого открытия нужной серии в Mini App.
+- **Реализация:**
+  1. В `services/scheduler.py` формировать кнопку с Telegram WebApp deep-link (`startapp=w_{mal_id}_{episode}`).
+  2. В `static/index.html` при наличии `start_param` автоматически открывать модалку и запускать плеер указанной серии.
 
-## License
+### 🎯 Приоритет 4 (P2): Резервный видеобалансер Kinobox
+- **Цель:** подключить Kinobox в качестве запасного источника видеопотоков для тайтлов, которых нет на AniLibria.
+- **Реализация:**
+  - Инициализация `new Kinobox('#player-container', { search: { shikimori: animeId } })` при отсутствии прямого HLS.
 
-MIT — see LICENSE. Third-party API terms apply to Jikan / AniList /
-Shikimori / Anilibria / Kodik.
+### 🎯 Приоритет 5 (Post-MVP): Миграция на PostgreSQL
+- **Цель:** переход с SQLite на PostgreSQL + SQLAlchemy async при росте одновременного онлайна свыше 1000 пользователей (схема и архитектура уже спроектированы).

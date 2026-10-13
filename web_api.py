@@ -245,17 +245,36 @@ async def get_anime_details(
 
         # Enrich with Kodik player for in-app watching
         player_info = None
+        title_ru = full.get("title_ru") or full.get("title_en") or ""
         if kodik.enabled():
             try:
                 player_info = await kodik.get_player(
                     shikimori_id=anime_id,
                     mal_id=anime_id,
+                    title=title_ru,
                     translation_id=translation_id,
                 )
             except Exception as e:
                 _log.info("Kodik player enrich failed for %s: %s", anime_id, e)
 
+        # Enrich with AniLibria release for guaranteed streaming sources
+        anilibria_info = None
+        try:
+            from services import anilibria
+            extras = [t for t in (full.get("title_en"), full.get("title_jp")) if t and t != title_ru]
+            anilibria_info = await anilibria.find_release(title_ru, extra_queries=extras)
+        except Exception as e:
+            _log.info("AniLibria enrich failed for %s: %s", anime_id, e)
+
+        sources = {
+            "shikimori": f"https://shikimori.one/animes/{anime_id}",
+            "anilibria": anilibria_info.get("url") if anilibria_info else None,
+            "anilibria_episodes": anilibria_info.get("episodes") if anilibria_info else [],
+            "anilibria_code": anilibria_info.get("code") if anilibria_info else None,
+        }
+
         full["kodik"] = player_info
+        full["sources"] = sources
         return full
     except HTTPException:
         raise
