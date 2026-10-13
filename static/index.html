@@ -178,7 +178,7 @@
             </span>
           </div>
         </div>
-        <img id="hero-img" src="" alt="Hero" class="w-full h-64 object-cover object-center group-hover:scale-105 transition-all duration-700" onerror="this.src='https://shikimori.io/assets/globals/missing_original.jpg'">
+        <img id="hero-img" src="" alt="Hero" class="w-full h-64 object-cover object-center group-hover:scale-105 transition-all duration-700" onerror="imgFallback(this)">
       </div>
 
       <!-- FILTERED CATEGORY GRID (IF GENRE SELECTED) -->
@@ -372,7 +372,7 @@
 
       <!-- HEADER INFO: POSTER + METADATA -->
       <div class="flex gap-4">
-        <img id="modal-poster" src="" alt="Poster" class="w-24 h-36 object-cover rounded-2xl shadow-card-elevated border border-white/10 flex-shrink-0" onerror="this.src='https://shikimori.io/assets/globals/missing_original.jpg'">
+        <img id="modal-poster" src="" alt="Poster" class="w-24 h-36 object-cover rounded-2xl shadow-card-elevated border border-white/10 flex-shrink-0" onerror="imgFallback(this)">
         <div class="flex-1 space-y-2">
           <h3 id="modal-title" class="text-base font-extrabold text-white leading-tight line-clamp-2">
             Название аниме
@@ -389,9 +389,9 @@
         </div>
       </div>
 
-      <!-- SYNOPSIS -->
+      <!-- DESCRIPTION -->
       <div class="bg-dark-850 border border-white/5 rounded-2xl p-3.5 space-y-1">
-        <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Синопсис</span>
+        <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Описание</span>
         <p id="modal-synopsis" class="text-xs text-slate-300 leading-relaxed font-normal">
           Описание отсутствует.
         </p>
@@ -457,6 +457,18 @@
     let selectedVibeYearTo = 2026;
     let selectedVibeGenre = 'action';
 
+    const FALLBACK_POSTER = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='450' viewBox='0 0 300 450'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%23181825'/><stop offset='50%25' stop-color='%2311111b'/><stop offset='100%25' stop-color='%230b0b12'/></linearGradient></defs><rect width='100%25' height='100%25' fill='url(%23g)'/><circle cx='150' cy='200' r='42' fill='%236366f1' fill-opacity='0.25' stroke='%23818cf8' stroke-width='1.5'/><polygon points='142,185 166,200 142,215' fill='%23ffffff'/><text x='150' y='275' font-family='sans-serif' font-size='13' font-weight='800' fill='%2394a3b8' text-anchor='middle' letter-spacing='3'>ENJOYANIME</text></svg>";
+
+    function imgFallback(el) { el.onerror = null; el.src = FALLBACK_POSTER; }
+
+    function sanitizeDescription(text) {
+      if (!text) return 'Описание отсутствует.';
+      let clean = text.replace(/\[\/?\w+(?:=[^\]]*)?]/g, '');
+      clean = clean.replace(/<[^>]+>/g, '');
+      clean = clean.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+      return clean || 'Описание отсутствует.';
+    }
+
     function haptic() {
       tg?.HapticFeedback?.impactOccurred('light');
     }
@@ -482,14 +494,17 @@
         const data = await res.json();
         
         if (data.airing && data.airing.length > 0) {
-          const hero = data.airing[0];
+          const hero = data.hero || data.popular[0] || data.airing[0];
           document.getElementById('hero-title').textContent = hero.title_ru || hero.title_en;
           document.getElementById('hero-score').innerHTML = `
             <svg class="w-3 h-3 fill-amber-400" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-            ${hero.score || '9.1'}
+            ${hero.score || '—'}
           `;
           document.getElementById('hero-episodes').textContent = hero.episodes ? `${hero.episodes} серий` : 'Онгоинг';
-          document.getElementById('hero-img').src = hero.image_url;
+          const heroImg = document.getElementById('hero-img');
+          heroImg.onerror = function() { imgFallback(this); };
+          heroImg.src = hero.image_url;
+          document.getElementById('hero-subtitle').textContent = hero.year ? `${hero.year} · Нажмите, чтобы открыть` : 'Нажмите, чтобы открыть плеер';
           document.getElementById('hero-banner').onclick = () => openCard(hero.shikimori_id || hero.mal_id);
         }
 
@@ -515,7 +530,7 @@
               alt="${item.title_ru || item.title_en}" 
               class="w-full h-full object-cover group-hover:scale-105 transition-all duration-500" 
               loading="lazy"
-              onerror="this.onerror=null; this.src='https://shikimori.io/assets/globals/missing_original.jpg';"
+              onerror="imgFallback(this)"
             >
             <div class="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/20"></div>
             <div class="absolute top-2 left-2 glass-pill px-2 py-0.5 rounded-lg text-[10px] font-bold text-amber-300 flex items-center gap-1 shadow">
@@ -624,7 +639,7 @@
         grid.innerHTML = items.map(c => `
           <div class="bg-dark-850 border border-white/10 rounded-2xl p-2.5 cursor-pointer hover:border-indigo-500/50 active:scale-[0.97] transition-all flex flex-col group" onclick="openCard(${c.shikimori_id || c.mal_id})">
             <div class="aspect-[3/4] rounded-xl overflow-hidden relative bg-black shadow-card-elevated">
-              <img src="${c.image_url}" alt="${c.title_ru || c.title_en}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" onerror="this.onerror=null; this.src='https://shikimori.io/assets/globals/missing_original.jpg';">
+              <img src="${c.image_url}" alt="${c.title_ru || c.title_en}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" onerror="imgFallback(this)">
               <span class="absolute top-2 left-2 glass-pill px-2 py-0.5 rounded-lg text-[10px] font-bold text-amber-300 flex items-center gap-1 shadow">
                 <svg class="w-2.5 h-2.5 fill-amber-400" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                 ${c.score || '—'}
@@ -685,7 +700,7 @@
                 src="${c.image_url}" 
                 alt="${c.title_ru || c.title_en}" 
                 class="w-full h-full object-cover group-hover:scale-105 transition duration-500" 
-                onerror="this.onerror=null; this.src='https://shikimori.io/assets/globals/missing_original.jpg';"
+                onerror="imgFallback(this)"
               >
               <span class="absolute top-2 left-2 glass-pill px-2 py-0.5 rounded-lg text-[10px] font-bold text-amber-300 flex items-center gap-1 shadow">
                 <svg class="w-2.5 h-2.5 fill-amber-400" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
@@ -713,14 +728,16 @@
         currentCard = data;
 
         document.getElementById('modal-title').textContent = data.title_ru || data.title_en;
-        document.getElementById('modal-poster').src = data.image_url;
+        const posterEl = document.getElementById('modal-poster');
+        posterEl.onerror = function() { imgFallback(this); };
+        posterEl.src = data.image_url;
         document.getElementById('modal-score').innerHTML = `
           <svg class="w-3 h-3 fill-amber-400" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
           ${data.score || '—'}
         `;
         document.getElementById('modal-year').textContent = data.year || '';
         document.getElementById('modal-episodes-info').textContent = data.episodes ? `${data.episodes} эп.` : 'Онгоинг';
-        document.getElementById('modal-synopsis').textContent = data.synopsis_ru || 'Описание отсутствует.';
+        document.getElementById('modal-synopsis').textContent = sanitizeDescription(data.synopsis_ru);
         
         // Genres
         const genresEl = document.getElementById('modal-genres');

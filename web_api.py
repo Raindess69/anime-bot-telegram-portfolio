@@ -57,10 +57,12 @@ async def health_check():
 async def get_feed(lang: str = "ru"):
     """Returns curated collections for the main page."""
     try:
-        airing = await shikimori.top_anime(filter_="airing", limit=10)
-        popular = await shikimori.top_anime(filter_="bypopularity", limit=10)
-        ranked = await shikimori.top_anime(filter_=None, limit=10)
+        airing = await shikimori.top_anime(filter_="airing", limit=12)
+        popular = await shikimori.top_anime(filter_="bypopularity", limit=12)
+        ranked = await shikimori.top_anime(filter_=None, limit=12)
+        hero = popular[0] if popular else (airing[0] if airing else None)
         return {
+            "hero": hero,
             "airing": airing,
             "popular": popular,
             "top": ranked,
