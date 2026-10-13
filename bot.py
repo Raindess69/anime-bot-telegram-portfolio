@@ -39,17 +39,19 @@ def sanitize_no_proxy() -> None:
 
 
 def get_current_proxy() -> str | None:
-    """Read proxy from .proxy file, fresh .env, or os.environ."""
-    from pathlib import Path
-    for proxy_file in (Path(".proxy"), Path("/tmp/current_proxy")):
-        try:
-            if proxy_file.exists():
-                content = proxy_file.read_text(encoding="utf-8").strip()
-                if content:
-                    return content
-        except Exception:
-            pass
+    """Read proxy strictly from session environment or fallback to .env."""
+    # 1. Highest priority: session environment injected by host
+    env_proxy = (
+        os.getenv("HTTPS_PROXY")
+        or os.getenv("HTTP_PROXY")
+        or os.getenv("https_proxy")
+        or os.getenv("http_proxy")
+        or os.getenv("BOT_PROXY")
+    )
+    if env_proxy:
+        return env_proxy
 
+    # 2. Fallback to .env file if explicitly configured
     try:
         from dotenv import dotenv_values
         env_vals = dotenv_values(".env")
@@ -59,13 +61,7 @@ def get_current_proxy() -> str | None:
     except Exception:
         pass
 
-    return (
-        os.getenv("HTTPS_PROXY")
-        or os.getenv("HTTP_PROXY")
-        or os.getenv("https_proxy")
-        or os.getenv("http_proxy")
-        or os.getenv("BOT_PROXY")
-    )
+    return None
 
 
 def mask_proxy(proxy_url: str | None) -> str:
@@ -163,8 +159,13 @@ async def main() -> None:
             except asyncio.CancelledError:
                 break
             except Exception as err:
+                err_text = str(err).lower()
+                if "407" in err_text or "proxy authentication" in err_text:
+                    logging.error("Proxy token expired with 407 (%s). Exiting to let watchdog restart with fresh session.", err)
+                    raise SystemExit(1)
+
                 logging.warning(
-                    "Telegram polling interrupted (%s: %s). Re-reading fresh proxy and reconnecting in 3s…",
+                    "Telegram polling interrupted (%s: %s). Reconnecting in 3s…",
                     type(err).__name__,
                     err,
                 )
