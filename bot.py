@@ -64,11 +64,37 @@ async def main() -> None:
     logging.info("Bot starting…")
     await bot.delete_webhook(drop_pending_updates=True)
 
+    # Optional: configure Chat Menu Button to open Mini App directly
+    try:
+        from aiogram.types import MenuButtonWebApp, WebAppInfo
+        await bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(
+                text="📺 Mini App",
+                web_app=WebAppInfo(url=settings.mini_app_url),
+            )
+        )
+    except Exception as e:
+        logging.info("Could not set chat menu button: %s", e)
+
+    import uvicorn
+    from web_api import app as api_app
+
+    web_config = uvicorn.Config(
+        app=api_app,
+        host=settings.web_host,
+        port=settings.web_port,
+        log_level="warning",
+    )
+    web_server = uvicorn.Server(web_config)
+    web_task = asyncio.create_task(web_server.serve())
+
     scheduler_task = asyncio.create_task(run_periodic_check(bot))
     try:
+        logging.info("Mini App web server listening on %s:%s", settings.web_host, settings.web_port)
         await dp.start_polling(bot)
     finally:
         scheduler_task.cancel()
+        web_server.should_exit = True
 
 
 if __name__ == "__main__":

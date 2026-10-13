@@ -116,3 +116,27 @@ async def cb_start_lang(call: CallbackQuery) -> None:
             await _send_welcome(call.message, call.from_user.id, new_lang)
         except Exception:
             pass
+
+
+@router.message(Command("app"))
+@router.message(Command("webapp"))
+async def cmd_webapp(message: Message) -> None:
+    from aiogram.types import WebAppInfo
+    from config import settings
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📺 Открыть EnjoyAnime (Mini App)",
+                    web_app=WebAppInfo(url=settings.mini_app_url),
+                )
+            ]
+        ]
+    )
+    await message.answer(
+        "✨ <b>EnjoyAnime WebApp</b>\n\n"
+        "Нажмите на кнопку ниже, чтобы открыть визуальный каталог, трекер и просмотр серий:",
+        parse_mode=ParseMode.HTML,
+        reply_markup=kb,
+    )

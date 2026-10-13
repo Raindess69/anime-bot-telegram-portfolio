@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="ru" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>EnjoyAnime — Telegram Mini App</title>
+  
+  <!-- Telegram WebApp SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            },
+            accent: '#f43f5e',
+            darkbg: '#090a0f',
+            darkcard: '#12141c',
+            darkborder: '#1e2230',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Custom Scrollbar & Smooth transitions */
+    ::-webkit-scrollbar { display: none; }
+    * { -webkit-tap-highlight-color: transparent; }
+    body {
+      background-color: #090a0f;
+      color: #f1f5f9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      overflow-x: hidden;
+      padding-bottom: 80px;
+    }
+    .glass {
+      background: rgba(18, 20, 28, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .line-clamp-2 {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .line-clamp-3 {
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .carousel-item {
+      flex: 0 0 140px;
+    }
+    @media (min-width: 640px) {
+      .carousel-item { flex: 0 0 170px; }
+    }
+  </style>
+</head>
+<body class="select-none">
+
+  <!-- TOP HEADER -->
+  <header class="sticky top-0 z-40 glass border-b border-darkborder px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center space-x-2">
+      <span class="text-xl">🎌</span>
+      <h1 class="text-lg font-bold bg-gradient-to-r from-indigo-400 to-pink-500 bg-clip-text text-transparent">
+        EnjoyAnime
+      </h1>
+      <span class="text-[10px] uppercase font-semibold bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-500/30">
+        TMA
+      </span>
+    </div>
+
+    <!-- User Profile Badge -->
+    <div id="user-badge" class="flex items-center space-x-2 bg-darkborder/50 px-2.5 py-1 rounded-full text-xs text-slate-300">
+      <span id="user-name">Гость</span>
+    </div>
+  </header>
+
+  <!-- MAIN APP CONTAINER -->
+  <main id="app-container" class="max-w-md mx-auto px-4 pt-3 pb-8">
+    
+    <!-- TAB 1: HOME (FEED) -->
+    <section id="view-home" class="space-y-6">
+      
+      <!-- HERO BANNER -->
+      <div id="hero-banner" class="relative rounded-2xl overflow-hidden shadow-2xl border border-darkborder cursor-pointer transition transform active:scale-98">
+        <div class="h-48 bg-gradient-to-t from-darkbg via-darkbg/40 to-transparent absolute inset-0 z-10 flex flex-col justify-end p-4">
+          <span class="text-xs font-bold text-accent uppercase tracking-wider mb-1">🔥 Главный онгоинг</span>
+          <h2 id="hero-title" class="text-lg font-bold text-white drop-shadow line-clamp-1">Загрузка...</h2>
+          <div class="flex items-center space-x-3 text-xs text-slate-300 mt-1">
+            <span id="hero-score" class="text-amber-400 font-semibold">⭐ 9.1</span>
+            <span id="hero-status">Выходит</span>
+          </div>
+        </div>
+        <img id="hero-img" src="" alt="Hero" class="w-full h-48 object-cover">
+      </div>
+
+      <!-- ONGOING CAROUSEL -->
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-base font-bold text-slate-100 flex items-center gap-1.5">
+            <span>📡</span> Выходят сейчас
+          </h3>
+        </div>
+        <div id="feed-airing" class="flex space-x-3 overflow-x-auto pb-2 scrollbar-none">
+          <!-- Populated by JS -->
+          <div class="text-xs text-slate-500 p-4">Загрузка онгоингов…</div>
+        </div>
+      </div>
+
+      <!-- TOP RATED CAROUSEL -->
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-base font-bold text-slate-100 flex items-center gap-1.5">
+            <span>🏆</span> Топ рейтинга
+          </h3>
+        </div>
+        <div id="feed-top" class="flex space-x-3 overflow-x-auto pb-2 scrollbar-none">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- POPULAR CAROUSEL -->
+      <div>
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-base font-bold text-slate-100 flex items-center gap-1.5">
+            <span>✨</span> Популярное
+          </h3>
+        </div>
+        <div id="feed-popular" class="flex space-x-3 overflow-x-auto pb-2 scrollbar-none">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: SEARCH -->
+    <section id="view-search" class="hidden space-y-4">
+      <div class="relative">
+        <input 
+          id="search-input" 
+          type="text" 
+          placeholder="Название аниме (например: Наруто)..."
+          class="w-full bg-darkcard border border-darkborder focus:border-indigo-500 rounded-xl px-4 py-3 pl-10 text-sm text-slate-100 placeholder-slate-500 outline-none transition shadow-inner"
+        >
+        <span class="absolute left-3.5 top-3.5 text-slate-400">🔍</span>
+      </div>
+
+      <div id="search-status" class="text-xs text-slate-400 px-1 hidden">Ищу аниме...</div>
+
+      <!-- SEARCH RESULTS GRID -->
+      <div id="search-results" class="grid grid-cols-2 gap-3 pt-2">
+        <!-- Populated by JS -->
+      </div>
+    </section>
+
+    <!-- TAB 3: MY LIBRARY -->
+    <section id="view-library" class="hidden space-y-4">
+      <!-- Category Chips -->
+      <div class="flex space-x-2 overflow-x-auto pb-1 scrollbar-none text-xs">
+        <button class="lib-tab active px-3.5 py-1.5 rounded-full font-medium bg-indigo-600 text-white" data-status="watching">Смотрю</button>
+        <button class="lib-tab px-3.5 py-1.5 rounded-full font-medium bg-darkcard text-slate-300 border border-darkborder" data-status="plan">В планах</button>
+        <button class="lib-tab px-3.5 py-1.5 rounded-full font-medium bg-darkcard text-slate-300 border border-darkborder" data-status="completed">Просмотрено</button>
+        <button class="lib-tab px-3.5 py-1.5 rounded-full font-medium bg-darkcard text-slate-300 border border-darkborder" data-status="dropped">Брошено</button>
+      </div>
+
+      <!-- LIBRARY ITEMS LIST -->
+      <div id="library-list" class="space-y-3 pt-2">
+        <div class="text-center py-12 text-slate-500 text-sm">В этом списке пока ничего нет.</div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ANIME DETAIL & PLAYER MODAL (DRAWER) -->
+  <div id="detail-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex flex-col justify-end">
+    <div class="glass w-full max-h-[92vh] overflow-y-auto rounded-t-3xl border-t border-darkborder p-5 space-y-5 animate-slide-up">
+      
+      <!-- Close Bar -->
+      <div class="flex items-center justify-between pb-2 border-b border-darkborder/50">
+        <h3 id="modal-title" class="text-base font-bold text-white line-clamp-1">Название аниме</h3>
+        <button id="modal-close" class="text-slate-400 hover:text-white p-1 rounded-full bg-darkborder/50 text-sm w-7 h-7 flex items-center justify-center">✕</button>
+      </div>
+
+      <!-- IN-APP VIDEO PLAYER -->
+      <div id="player-container" class="w-full aspect-video bg-black rounded-xl overflow-hidden border border-darkborder relative hidden">
+        <iframe id="video-frame" src="" class="w-full h-full border-0" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
+      </div>
+
+      <!-- EPISODE SELECTOR BUTTONS (IF KODIK PLAYER EXISTS) -->
+      <div id="episodes-wrapper" class="hidden space-y-2">
+        <div class="flex items-center justify-between text-xs text-slate-400">
+          <span class="font-semibold text-slate-200">📺 Выбор серии:</span>
+          <span id="player-voice" class="text-[11px] text-indigo-400"></span>
+        </div>
+        <div id="episodes-list" class="flex flex-wrap gap-2 max-h-32 overflow-y-auto pr-1">
+          <!-- Buttons generated by JS -->
+        </div>
+      </div>
+
+      <!-- ANIME INFO BLOCK -->
+      <div class="flex gap-4">
+        <img id="modal-poster" src="" alt="Poster" class="w-24 h-36 object-cover rounded-xl shadow-lg border border-darkborder flex-shrink-0">
+        <div class="flex-1 space-y-2 text-xs">
+          <div class="flex items-center gap-2">
+            <span id="modal-score" class="text-amber-400 font-bold">⭐ 8.5</span>
+            <span id="modal-year" class="text-slate-400">2026</span>
+            <span id="modal-episodes-info" class="text-slate-400">12 эп.</span>
+          </div>
+          <div id="modal-genres" class="flex flex-wrap gap-1 text-[10px] text-indigo-300">
+            <!-- Badges -->
+          </div>
+          <p id="modal-synopsis" class="text-slate-300 text-xs line-clamp-3 leading-relaxed">
+            Описание аниме...
+          </p>
+        </div>
+      </div>
+
+      <!-- TRACKER ACTIONS BUTTONS -->
+      <div class="grid grid-cols-2 gap-2 pt-1 border-t border-darkborder/50 text-xs font-semibold">
+        <button id="btn-set-watching" class="py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center gap-1.5 transition">
+          <span>👀</span> Смотрю
+        </button>
+        <button id="btn-set-plan" class="py-2.5 px-3 rounded-xl bg-darkcard hover:bg-darkborder border border-darkborder text-slate-200 flex items-center justify-center gap-1.5 transition">
+          <span>📌</span> В планах
+        </button>
+        <button id="btn-set-completed" class="py-2.5 px-3 rounded-xl bg-darkcard hover:bg-darkborder border border-darkborder text-slate-200 flex items-center justify-center gap-1.5 transition">
+          <span>✅</span> Просмотрено
+        </button>
+        <button id="btn-toggle-fav" class="py-2.5 px-3 rounded-xl bg-darkcard hover:bg-darkborder border border-darkborder text-amber-300 flex items-center justify-center gap-1.5 transition">
+          <span>⭐</span> Избранное
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- BOTTOM NAVIGATION BAR -->
+  <nav class="fixed bottom-0 inset-x-0 z-40 glass border-t border-darkborder px-6 py-2 flex items-center justify-around text-xs">
+    <button id="nav-home" class="nav-btn active flex flex-col items-center gap-1 text-indigo-400 transition" onclick="switchTab('home')">
+      <span class="text-lg">🏠</span>
+      <span class="text-[10px] font-medium">Главная</span>
+    </button>
+    <button id="nav-search" class="nav-btn flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200 transition" onclick="switchTab('search')">
+      <span class="text-lg">🔍</span>
+      <span class="text-[10px] font-medium">Поиск</span>
+    </button>
+    <button id="nav-library" class="nav-btn flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200 transition" onclick="switchTab('library')">
+      <span class="text-lg">📋</span>
+      <span class="text-[10px] font-medium">Мой список</span>
+    </button>
+  </nav>
+
+  <!-- JAVASCRIPT LOGIC -->
+  <script>
+    // Initialize Telegram WebApp
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+    }
+
+    // Current user context
+    const user = tg?.initDataUnsafe?.user || { id: 8648632519, first_name: "Пользователь" };
+    document.getElementById('user-name').textContent = user.first_name || 'Профиль';
+
+    let currentCard = null;
+    let currentLibraryStatus = 'watching';
+
+    // TAB SWITCHER
+    function switchTab(tab) {
+      tg?.HapticFeedback?.impactOccurred('light');
+      ['home', 'search', 'library'].forEach(t => {
+        document.getElementById(`view-${t}`).classList.add('hidden');
+        document.getElementById(`nav-${t}`).classList.remove('text-indigo-400');
+        document.getElementById(`nav-${t}`).classList.add('text-slate-400');
+      });
+      document.getElementById(`view-${tab}`).classList.remove('hidden');
+      document.getElementById(`nav-${tab}`).classList.add('text-indigo-400');
+      document.getElementById(`nav-${tab}`).classList.remove('text-slate-400');
+
+      if (tab === 'library') loadLibrary(currentLibraryStatus);
+    }
+
+    // HAPTIC FEEDBACK HELPER
+    function haptic() {
+      tg?.HapticFeedback?.impactOccurred('light');
+    }
+
+    // LOAD FEED ON START
+    async function loadFeed() {
+      try {
+        const res = await fetch('/api/feed');
+        const data = await res.json();
+        
+        // Hero setup
+        if (data.airing && data.airing.length > 0) {
+          const hero = data.airing[0];
+          document.getElementById('hero-title').textContent = hero.title_ru || hero.title_en;
+          document.getElementById('hero-score').textContent = `⭐ ${hero.score || '9.0'}`;
+          document.getElementById('hero-img').src = hero.image_url;
+          document.getElementById('hero-banner').onclick = () => openCard(hero.shikimori_id || hero.mal_id);
+        }
+
+        renderCarousel('feed-airing', data.airing || []);
+        renderCarousel('feed-top', data.top || []);
+        renderCarousel('feed-popular', data.popular || []);
+      } catch (e) {
+        console.error('Feed error:', e);
+      }
+    }
+
+    function renderCarousel(elemId, items) {
+      const container = document.getElementById(elemId);
+      if (!items || items.length === 0) {
+        container.innerHTML = '<div class="text-xs text-slate-500 py-2">Нет данных</div>';
+        return;
+      }
+      container.innerHTML = items.map(item => `
+        <div class="carousel-item flex-shrink-0 cursor-pointer group" onclick="openCard(${item.shikimori_id || item.mal_id})">
+          <div class="relative rounded-xl overflow-hidden aspect-[3/4] bg-darkcard border border-darkborder shadow group-active:scale-95 transition">
+            <img src="${item.image_url}" alt="${item.title_ru || item.title_en}" class="w-full h-full object-cover" loading="lazy">
+            <div class="absolute top-1.5 left-1.5 bg-black/70 backdrop-blur px-1.5 py-0.5 rounded text-[10px] font-bold text-amber-300">
+              ⭐ ${item.score || '—'}
+            </div>
+            ${item.episodes ? `<div class="absolute bottom-1.5 right-1.5 bg-black/70 backdrop-blur px-1.5 py-0.5 rounded text-[10px] text-slate-200">${item.episodes} эп.</div>` : ''}
+          </div>
+          <div class="text-xs font-semibold text-slate-200 mt-1.5 line-clamp-1 group-hover:text-indigo-400 transition">
+            ${item.title_ru || item.title_en}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // SEARCH WITH DEBOUNCE
+    let debounceTimer;
+    document.getElementById('search-input').addEventListener('input', (e) => {
+      clearTimeout(debounceTimer);
+      const query = e.target.value.trim();
+      if (!query) {
+        document.getElementById('search-results').innerHTML = '';
+        return;
+      }
+      debounceTimer = setTimeout(() => performSearch(query), 350);
+    });
+
+    async function performSearch(query) {
+      const statusEl = document.getElementById('search-status');
+      const resultsEl = document.getElementById('search-results');
+      statusEl.classList.remove('hidden');
+      statusEl.textContent = `Поиск «${query}»...`;
+
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        const cards = await res.json();
+        statusEl.classList.add('hidden');
+
+        if (!cards || cards.length === 0) {
+          resultsEl.innerHTML = '<div class="col-span-2 text-center text-slate-500 py-8 text-xs">Ничего не найдено</div>';
+          return;
+        }
+
+        resultsEl.innerHTML = cards.map(c => `
+          <div class="bg-darkcard border border-darkborder rounded-xl p-2.5 cursor-pointer active:scale-98 transition flex flex-col" onclick="openCard(${c.shikimori_id || c.mal_id})">
+            <div class="aspect-[3/4] rounded-lg overflow-hidden relative bg-black">
+              <img src="${c.image_url}" alt="${c.title_ru || c.title_en}" class="w-full h-full object-cover">
+              <span class="absolute top-1.5 left-1.5 bg-black/80 px-1.5 py-0.5 rounded text-[10px] font-bold text-amber-300">⭐ ${c.score || '—'}</span>
+            </div>
+            <div class="mt-2 text-xs font-semibold line-clamp-2 text-slate-200">${c.title_ru || c.title_en}</div>
+            <div class="text-[10px] text-slate-400 mt-auto pt-1">${c.year || ''} ${c.episodes ? `· ${c.episodes} эп.` : ''}</div>
+          </div>
+        `).join('');
+      } catch (e) {
+        statusEl.textContent = 'Ошибка поиска';
+      }
+    }
+
+    // OPEN ANIME MODAL & PLAYER
+    async function openCard(animeId) {
+      haptic();
+      const modal = document.getElementById('detail-modal');
+      modal.classList.remove('hidden');
+
+      try {
+        const res = await fetch(`/api/anime/${animeId}`);
+        const data = await res.json();
+        currentCard = data;
+
+        document.getElementById('modal-title').textContent = data.title_ru || data.title_en;
+        document.getElementById('modal-poster').src = data.image_url;
+        document.getElementById('modal-score').textContent = `⭐ ${data.score || '—'}`;
+        document.getElementById('modal-year').textContent = data.year || '';
+        document.getElementById('modal-episodes-info').textContent = data.episodes ? `${data.episodes} эп.` : '';
+        document.getElementById('modal-synopsis').textContent = data.synopsis_ru || 'Описание отсутствует.';
+        
+        // Genres
+        const genresEl = document.getElementById('modal-genres');
+        genresEl.innerHTML = (data.genres || []).slice(0, 4).map(g => `
+          <span class="bg-darkborder/60 px-1.5 py-0.5 rounded border border-darkborder">${g}</span>
+        `).join('');
+
+        // Player & Episodes
+        const playerContainer = document.getElementById('player-container');
+        const videoFrame = document.getElementById('video-frame');
+        const epWrapper = document.getElementById('episodes-wrapper');
+        const epList = document.getElementById('episodes-list');
+
+        if (data.kodik && data.kodik.url) {
+          playerContainer.classList.remove('hidden');
+          videoFrame.src = data.kodik.url;
+          document.getElementById('player-voice').textContent = data.kodik.translation || '';
+
+          if (data.kodik.episodes && Object.keys(data.kodik.episodes).length > 0) {
+            epWrapper.classList.remove('hidden');
+            const epKeys = Object.keys(data.kodik.episodes).map(Number).sort((a,b)=>a-b);
+            epList.innerHTML = epKeys.map(epNum => `
+              <button 
+                class="px-2.5 py-1 rounded bg-darkcard border border-darkborder text-xs hover:bg-indigo-600 hover:text-white transition"
+                onclick="changeEpisode('${data.kodik.episodes[epNum]}', ${epNum})"
+              >
+                ${epNum}
+              </button>
+            `).join('');
+          } else {
+            epWrapper.classList.add('hidden');
+          }
+        } else {
+          playerContainer.classList.add('hidden');
+          epWrapper.classList.add('hidden');
+        }
+
+      } catch (e) {
+        console.error('Card load error:', e);
+      }
+    }
+
+    function changeEpisode(url, epNum) {
+      haptic();
+      const videoFrame = document.getElementById('video-frame');
+      videoFrame.src = url;
+      // Auto-update episode in user's library
+      if (currentCard) {
+        fetch('/api/library/episode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: user.id,
+            mal_id: currentCard.shikimori_id || currentCard.mal_id,
+            episode: epNum
+          })
+        });
+      }
+    }
+
+    // CLOSE MODAL
+    document.getElementById('modal-close').onclick = () => {
+      haptic();
+      document.getElementById('detail-modal').classList.add('hidden');
+      document.getElementById('video-frame').src = ''; // stop playback
+    };
+
+    // TRACKER BUTTON ACTIONS
+    async function setStatus(status) {
+      if (!currentCard) return;
+      haptic();
+      try {
+        await fetch('/api/library/status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: user.id,
+            mal_id: currentCard.shikimori_id || currentCard.mal_id,
+            title: currentCard.title_ru || currentCard.title_en,
+            lang: 'ru',
+            status: status
+          })
+        });
+        tg?.showPopup?.({ message: `Статус изменен на: ${status}` });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    document.getElementById('btn-set-watching').onclick = () => setStatus('watching');
+    document.getElementById('btn-set-plan').onclick = () => setStatus('plan');
+    document.getElementById('btn-set-completed').onclick = () => setStatus('completed');
+    document.getElementById('btn-toggle-fav').onclick = async () => {
+      if (!currentCard) return;
+      haptic();
+      await fetch('/api/library/favorite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          mal_id: currentCard.shikimori_id || currentCard.mal_id,
+          title: currentCard.title_ru || currentCard.title_en,
+          lang: 'ru'
+        })
+      });
+      tg?.showPopup?.({ message: 'Обновлено в избранном!' });
+    };
+
+    // LIBRARY TAB FILTER
+    document.querySelectorAll('.lib-tab').forEach(btn => {
+      btn.onclick = (e) => {
+        haptic();
+        document.querySelectorAll('.lib-tab').forEach(b => {
+          b.classList.remove('bg-indigo-600', 'text-white');
+          b.classList.add('bg-darkcard', 'text-slate-300');
+        });
+        e.target.classList.add('bg-indigo-600', 'text-white');
+        e.target.classList.remove('bg-darkcard', 'text-slate-300');
+        currentLibraryStatus = e.target.dataset.status;
+        loadLibrary(currentLibraryStatus);
+      };
+    });
+
+    async function loadLibrary(status) {
+      const container = document.getElementById('library-list');
+      container.innerHTML = '<div class="text-center text-xs text-slate-500 py-6">Загрузка библиотеки...</div>';
+      try {
+        const res = await fetch(`/api/library?user_id=${user.id}&status=${status}`);
+        const items = await res.json();
+        if (!items || items.length === 0) {
+          container.innerHTML = '<div class="text-center text-xs text-slate-500 py-12">Здесь пока пусто. Добавьте аниме через поиск!</div>';
+          return;
+        }
+        container.innerHTML = items.map(item => `
+          <div class="glass border border-darkborder rounded-xl p-3 flex items-center justify-between cursor-pointer active:scale-98 transition" onclick="openCard(${item.mal_id})">
+            <div class="space-y-1">
+              <div class="text-sm font-semibold text-slate-100 line-clamp-1">${item.title}</div>
+              <div class="text-[11px] text-slate-400">
+                Серия: <span class="font-bold text-indigo-400">${item.current_episode || 0}</span>
+                ${item.is_favorite ? ' · ⭐ Избранное' : ''}
+              </div>
+            </div>
+            <button class="bg-indigo-600/30 hover:bg-indigo-600 text-indigo-300 hover:text-white px-2.5 py-1 rounded text-xs border border-indigo-500/30 transition" onclick="event.stopPropagation(); incEpisode(${item.mal_id}, ${item.current_episode || 0})">
+              +1 эп.
+            </button>
+          </div>
+        `).join('');
+      } catch (e) {
+        container.innerHTML = '<div class="text-center text-xs text-rose-500 py-6">Ошибка загрузки</div>';
+      }
+    }
+
+    async function incEpisode(malId, currentEp) {
+      haptic();
+      await fetch('/api/library/episode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          mal_id: malId,
+          episode: currentEp + 1
+        })
+      });
+      loadLibrary(currentLibraryStatus);
+    }
+
+    // INITIAL LOAD
+    loadFeed();
+  </script>
+</body>
+</html>
