@@ -61,7 +61,7 @@ def start_pinggy_tunnel():
     https_url = None
     for line in iter(proc.stdout.readline, ""):
         print(line, end="")
-        match = re.search(r"https://[a-zA-Z0-9.-]+\.(?:run\.pinggy-free\.link|run\.pinggy\.link|a\.pinggy\.link|pinggy\.link)", line)
+        match = re.search(r"https://[a-zA-Z0-9.-]+\.(?:run\.pinggy-free\.link|run\.pinggy\.link|a\.pinggy\.link|free\.pinggy\.net|pinggy\.link|pinggy\.net)", line)
         if match:
             https_url = match.group(0)
             print("\n" + "=" * 50)
