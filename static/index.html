@@ -3,11 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>EnjoyAnime — Telegram Mini App</title>
+  <title>EnjoyAnime — Visual Streaming Experience</title>
   
   <!-- Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   
+  <!-- Premium Google Fonts: Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -15,17 +20,28 @@
       darkMode: 'class',
       theme: {
         extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', '-apple-system', 'sans-serif'],
+          },
           colors: {
-            brand: {
-              50: '#eef2ff',
-              500: '#6366f1',
-              600: '#4f46e5',
-              700: '#4338ca',
+            dark: {
+              950: '#06070a',
+              900: '#0d0f17',
+              850: '#121522',
+              800: '#1a1f30',
+              700: '#262d42',
             },
-            accent: '#f43f5e',
-            darkbg: '#090a0f',
-            darkcard: '#12141c',
-            darkborder: '#1e2230',
+            accent: {
+              purple: '#8b5cf6',
+              indigo: '#6366f1',
+              pink: '#ec4899',
+              amber: '#f59e0b',
+            }
+          },
+          boxShadow: {
+            'glow-indigo': '0 0 25px -5px rgba(99, 102, 241, 0.35)',
+            'glow-purple': '0 0 25px -5px rgba(139, 92, 246, 0.35)',
+            'card-elevated': '0 10px 30px -10px rgba(0, 0, 0, 0.7)',
           }
         }
       }
@@ -33,20 +49,48 @@
   </script>
 
   <style>
-    /* Custom Scrollbar & Smooth transitions */
     ::-webkit-scrollbar { display: none; }
     * { -webkit-tap-highlight-color: transparent; }
     body {
-      background-color: #090a0f;
-      color: #f1f5f9;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #06070a;
+      color: #f8fafc;
+      font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
       overflow-x: hidden;
-      padding-bottom: 80px;
+      padding-bottom: 96px;
     }
-    .glass {
-      background: rgba(18, 20, 28, 0.85);
+
+    /* Glassmorphism */
+    .glass-nav {
+      background: rgba(13, 15, 23, 0.78);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .glass-card {
+      background: rgba(18, 21, 34, 0.65);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .glass-pill {
+      background: rgba(255, 255, 255, 0.06);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* Animations */
+    @keyframes pulseGlow {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
+    }
+    .animate-glow {
+      animation: pulseGlow 3s ease-in-out infinite;
+    }
+    .line-clamp-1 {
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
     .line-clamp-2 {
       display: -webkit-box;
@@ -60,227 +104,308 @@
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
-    .carousel-item {
-      flex: 0 0 140px;
+
+    /* Carousel sizing */
+    .media-card {
+      flex: 0 0 148px;
     }
     @media (min-width: 640px) {
-      .carousel-item { flex: 0 0 170px; }
+      .media-card { flex: 0 0 176px; }
     }
   </style>
 </head>
-<body class="select-none">
+<body class="select-none antialiased">
 
-  <!-- TOP HEADER -->
-  <header class="sticky top-0 z-40 glass border-b border-darkborder px-4 py-3 flex items-center justify-between">
-    <div class="flex items-center space-x-2">
-      <span class="text-xl">🎌</span>
-      <h1 class="text-lg font-bold bg-gradient-to-r from-indigo-400 to-pink-500 bg-clip-text text-transparent">
-        EnjoyAnime
-      </h1>
-      <span class="text-[10px] uppercase font-semibold bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-500/30">
-        TMA
-      </span>
+  <!-- TOP APP BAR -->
+  <header class="sticky top-0 z-40 glass-nav px-4 py-3.5 flex items-center justify-between transition-all">
+    <div class="flex items-center space-x-2.5">
+      <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-violet-600 via-indigo-600 to-pink-500 p-0.5 shadow-glow-indigo flex items-center justify-center">
+        <div class="w-full h-full bg-dark-950 rounded-[10px] flex items-center justify-center font-black text-xs tracking-tighter text-transparent bg-clip-text bg-gradient-to-tr from-violet-400 to-pink-400">
+          EA
+        </div>
+      </div>
+      <div>
+        <h1 class="text-sm font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+          EnjoyAnime
+        </h1>
+        <p class="text-[10px] font-medium text-indigo-400 tracking-wider uppercase -mt-0.5">Streaming App</p>
+      </div>
     </div>
 
-    <!-- User Profile Badge -->
-    <div id="user-badge" class="flex items-center space-x-2 bg-darkborder/50 px-2.5 py-1 rounded-full text-xs text-slate-300">
-      <span id="user-name">Гость</span>
+    <!-- User Badge -->
+    <div class="flex items-center gap-2 bg-white/5 border border-white/10 px-3 py-1.5 rounded-full text-xs">
+      <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+      <span id="user-name" class="font-semibold text-slate-200 text-xs">Гость</span>
     </div>
   </header>
 
-  <!-- MAIN APP CONTAINER -->
-  <main id="app-container" class="max-w-md mx-auto px-4 pt-3 pb-8">
-    
-    <!-- TAB 1: HOME (FEED) -->
-    <section id="view-home" class="space-y-6">
-      
-      <!-- HERO BANNER -->
-      <div id="hero-banner" class="relative rounded-2xl overflow-hidden shadow-2xl border border-darkborder cursor-pointer transition transform active:scale-98">
-        <div class="h-48 bg-gradient-to-t from-darkbg via-darkbg/40 to-transparent absolute inset-0 z-10 flex flex-col justify-end p-4">
-          <span class="text-xs font-bold text-accent uppercase tracking-wider mb-1">🔥 Главный онгоинг</span>
-          <h2 id="hero-title" class="text-lg font-bold text-white drop-shadow line-clamp-1">Загрузка...</h2>
-          <div class="flex items-center space-x-3 text-xs text-slate-300 mt-1">
-            <span id="hero-score" class="text-amber-400 font-semibold">⭐ 9.1</span>
-            <span id="hero-status">Выходит</span>
+  <!-- MAIN SCROLL CONTAINER -->
+  <main class="max-w-md mx-auto px-4 pt-4 space-y-7">
+
+    <!-- ========================================== -->
+    <!-- TAB 1: HOME (FEED & CAROUSELS) -->
+    <!-- ========================================== -->
+    <section id="view-home" class="space-y-7">
+
+      <!-- HERO SHOWCASE BANNER -->
+      <div id="hero-banner" class="relative rounded-3xl overflow-hidden shadow-2xl border border-white/10 cursor-pointer group transition-all duration-300 active:scale-[0.98]">
+        <!-- Immersive Gradient Overlay -->
+        <div class="absolute inset-0 z-10 bg-gradient-to-t from-dark-950 via-dark-950/40 to-transparent flex flex-col justify-end p-5">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-500/20 text-rose-400 border border-rose-500/30">
+              🔥 В тренде
+            </span>
+            <span id="hero-score" class="flex items-center gap-1 text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+              <svg class="w-3 h-3 fill-amber-400" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              9.1
+            </span>
+          </div>
+          <h2 id="hero-title" class="text-xl font-extrabold text-white tracking-tight drop-shadow-md line-clamp-1 group-hover:text-indigo-300 transition">
+            Загрузка тайтла…
+          </h2>
+          <p id="hero-subtitle" class="text-xs text-slate-300 mt-1 line-clamp-1 font-medium">
+            Нажмите, чтобы открыть карточку и серии
+          </p>
+          <div class="mt-3.5 flex items-center gap-2.5">
+            <button class="bg-gradient-to-r from-violet-600 via-indigo-600 to-pink-600 hover:opacity-95 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-glow-indigo flex items-center gap-1.5 transition">
+              <svg class="w-3.5 h-3.5 fill-white" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Смотреть
+            </button>
+            <span id="hero-episodes" class="text-[11px] font-medium text-slate-400 glass-pill px-3 py-1.5 rounded-xl">
+              12 серий
+            </span>
           </div>
         </div>
-        <img id="hero-img" src="" alt="Hero" class="w-full h-48 object-cover">
+        <img id="hero-img" src="" alt="Hero Backdrop" class="w-full h-64 object-cover object-center group-hover:scale-105 transition-all duration-700">
       </div>
 
-      <!-- ONGOING CAROUSEL -->
-      <div>
-        <div class="flex items-center justify-between mb-3">
-          <h3 class="text-base font-bold text-slate-100 flex items-center gap-1.5">
-            <span>📡</span> Выходят сейчас
-          </h3>
+      <!-- CAROUSEL: AIRING (ОНГОИНГИ) -->
+      <div class="space-y-3">
+        <div class="flex items-center justify-between px-1">
+          <div class="flex items-center gap-2">
+            <div class="w-2 h-4 rounded-full bg-indigo-500"></div>
+            <h3 class="text-sm font-extrabold tracking-tight text-white uppercase">Выходят сейчас</h3>
+          </div>
+          <span class="text-[11px] font-semibold text-indigo-400">Сезон 2026</span>
         </div>
-        <div id="feed-airing" class="flex space-x-3 overflow-x-auto pb-2 scrollbar-none">
-          <!-- Populated by JS -->
+        <div id="feed-airing" class="flex space-x-3.5 overflow-x-auto pb-2 scrollbar-none pt-1">
           <div class="text-xs text-slate-500 p-4">Загрузка онгоингов…</div>
         </div>
       </div>
 
-      <!-- TOP RATED CAROUSEL -->
-      <div>
-        <div class="flex items-center justify-between mb-3">
-          <h3 class="text-base font-bold text-slate-100 flex items-center gap-1.5">
-            <span>🏆</span> Топ рейтинга
-          </h3>
+      <!-- CAROUSEL: TOP RATED (ТОП) -->
+      <div class="space-y-3">
+        <div class="flex items-center justify-between px-1">
+          <div class="flex items-center gap-2">
+            <div class="w-2 h-4 rounded-full bg-amber-500"></div>
+            <h3 class="text-sm font-extrabold tracking-tight text-white uppercase">Топ рейтинга</h3>
+          </div>
+          <span class="text-[11px] font-semibold text-slate-400">All-time</span>
         </div>
-        <div id="feed-top" class="flex space-x-3 overflow-x-auto pb-2 scrollbar-none">
+        <div id="feed-top" class="flex space-x-3.5 overflow-x-auto pb-2 scrollbar-none pt-1">
           <!-- Populated by JS -->
         </div>
       </div>
 
-      <!-- POPULAR CAROUSEL -->
-      <div>
-        <div class="flex items-center justify-between mb-3">
-          <h3 class="text-base font-bold text-slate-100 flex items-center gap-1.5">
-            <span>✨</span> Популярное
-          </h3>
+      <!-- CAROUSEL: POPULAR (ПОПУЛЯРНОЕ) -->
+      <div class="space-y-3">
+        <div class="flex items-center justify-between px-1">
+          <div class="flex items-center gap-2">
+            <div class="w-2 h-4 rounded-full bg-pink-500"></div>
+            <h3 class="text-sm font-extrabold tracking-tight text-white uppercase">Популярное</h3>
+          </div>
+          <span class="text-[11px] font-semibold text-slate-400">В тренде</span>
         </div>
-        <div id="feed-popular" class="flex space-x-3 overflow-x-auto pb-2 scrollbar-none">
+        <div id="feed-popular" class="flex space-x-3.5 overflow-x-auto pb-2 scrollbar-none pt-1">
           <!-- Populated by JS -->
         </div>
       </div>
+
     </section>
 
-    <!-- TAB 2: SEARCH -->
-    <section id="view-search" class="hidden space-y-4">
+    <!-- ========================================== -->
+    <!-- TAB 2: SEARCH (ПОИСК) -->
+    <!-- ========================================== -->
+    <section id="view-search" class="hidden space-y-5">
+      <!-- Search Bar -->
       <div class="relative">
         <input 
           id="search-input" 
           type="text" 
-          placeholder="Название аниме (например: Наруто)..."
-          class="w-full bg-darkcard border border-darkborder focus:border-indigo-500 rounded-xl px-4 py-3 pl-10 text-sm text-slate-100 placeholder-slate-500 outline-none transition shadow-inner"
+          placeholder="Поиск по названию (Клинок, Наруто, Блич)..."
+          class="w-full bg-dark-850 border border-white/10 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 rounded-2xl px-4 py-3.5 pl-11 text-sm font-medium text-white placeholder-slate-500 outline-none transition shadow-inner"
         >
-        <span class="absolute left-3.5 top-3.5 text-slate-400">🔍</span>
+        <svg class="w-4 h-4 text-slate-400 absolute left-4 top-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
       </div>
 
-      <div id="search-status" class="text-xs text-slate-400 px-1 hidden">Ищу аниме...</div>
+      <!-- Search Status Indicator -->
+      <div id="search-status" class="flex items-center gap-2 text-xs font-medium text-indigo-400 px-1 hidden">
+        <div class="w-2 h-2 rounded-full bg-indigo-500 animate-ping"></div>
+        <span>Ищем аниме по базам…</span>
+      </div>
 
-      <!-- SEARCH RESULTS GRID -->
-      <div id="search-results" class="grid grid-cols-2 gap-3 pt-2">
-        <!-- Populated by JS -->
+      <!-- Search Results Grid -->
+      <div id="search-results" class="grid grid-cols-2 gap-3.5 pt-1">
+        <!-- Results rendered here -->
       </div>
     </section>
 
-    <!-- TAB 3: MY LIBRARY -->
-    <section id="view-library" class="hidden space-y-4">
-      <!-- Category Chips -->
-      <div class="flex space-x-2 overflow-x-auto pb-1 scrollbar-none text-xs">
-        <button class="lib-tab active px-3.5 py-1.5 rounded-full font-medium bg-indigo-600 text-white" data-status="watching">Смотрю</button>
-        <button class="lib-tab px-3.5 py-1.5 rounded-full font-medium bg-darkcard text-slate-300 border border-darkborder" data-status="plan">В планах</button>
-        <button class="lib-tab px-3.5 py-1.5 rounded-full font-medium bg-darkcard text-slate-300 border border-darkborder" data-status="completed">Просмотрено</button>
-        <button class="lib-tab px-3.5 py-1.5 rounded-full font-medium bg-darkcard text-slate-300 border border-darkborder" data-status="dropped">Брошено</button>
+    <!-- ========================================== -->
+    <!-- TAB 3: LIBRARY (МОЙ СПИСОК) -->
+    <!-- ========================================== -->
+    <section id="view-library" class="hidden space-y-5">
+      <!-- Filter Segmented Tabs -->
+      <div class="flex p-1 bg-dark-900 border border-white/10 rounded-2xl overflow-x-auto scrollbar-none gap-1 text-xs font-semibold">
+        <button class="lib-tab active flex-1 py-2 px-3 rounded-xl transition text-center whitespace-nowrap bg-indigo-600 text-white shadow-glow-indigo" data-status="watching">Смотрю</button>
+        <button class="lib-tab flex-1 py-2 px-3 rounded-xl transition text-center whitespace-nowrap text-slate-400 hover:text-white" data-status="plan">В планах</button>
+        <button class="lib-tab flex-1 py-2 px-3 rounded-xl transition text-center whitespace-nowrap text-slate-400 hover:text-white" data-status="completed">Просмотрено</button>
+        <button class="lib-tab flex-1 py-2 px-3 rounded-xl transition text-center whitespace-nowrap text-slate-400 hover:text-white" data-status="dropped">Брошено</button>
       </div>
 
-      <!-- LIBRARY ITEMS LIST -->
-      <div id="library-list" class="space-y-3 pt-2">
-        <div class="text-center py-12 text-slate-500 text-sm">В этом списке пока ничего нет.</div>
+      <!-- Library List -->
+      <div id="library-list" class="space-y-3 pt-1">
+        <!-- Cards -->
       </div>
     </section>
 
   </main>
 
-  <!-- ANIME DETAIL & PLAYER MODAL (DRAWER) -->
-  <div id="detail-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex flex-col justify-end">
-    <div class="glass w-full max-h-[92vh] overflow-y-auto rounded-t-3xl border-t border-darkborder p-5 space-y-5 animate-slide-up">
+  <!-- ========================================== -->
+  <!-- DETAIL & VIDEO PLAYER DRAWER MODAL -->
+  <!-- ========================================== -->
+  <div id="detail-modal" class="fixed inset-0 z-50 bg-black/90 backdrop-blur-xl hidden flex flex-col justify-end transition-all duration-300">
+    <div class="bg-dark-900 border-t border-white/10 w-full max-h-[94vh] overflow-y-auto rounded-t-[32px] p-5 space-y-5 shadow-2xl">
       
-      <!-- Close Bar -->
-      <div class="flex items-center justify-between pb-2 border-b border-darkborder/50">
-        <h3 id="modal-title" class="text-base font-bold text-white line-clamp-1">Название аниме</h3>
-        <button id="modal-close" class="text-slate-400 hover:text-white p-1 rounded-full bg-darkborder/50 text-sm w-7 h-7 flex items-center justify-center">✕</button>
+      <!-- Top Drag Indicator & Close Button -->
+      <div class="flex items-center justify-between pb-1">
+        <div class="w-10 h-1 rounded-full bg-white/20 mx-auto -mr-6"></div>
+        <button id="modal-close" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 flex items-center justify-center text-slate-300 transition active:scale-95">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
 
-      <!-- IN-APP VIDEO PLAYER -->
-      <div id="player-container" class="w-full aspect-video bg-black rounded-xl overflow-hidden border border-darkborder relative hidden">
+      <!-- CINEMATIC VIDEO PLAYER IFRAME -->
+      <div id="player-container" class="w-full aspect-video bg-black rounded-2xl overflow-hidden border border-white/15 relative shadow-glow-indigo hidden">
         <iframe id="video-frame" src="" class="w-full h-full border-0" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
       </div>
 
-      <!-- EPISODE SELECTOR BUTTONS (IF KODIK PLAYER EXISTS) -->
-      <div id="episodes-wrapper" class="hidden space-y-2">
-        <div class="flex items-center justify-between text-xs text-slate-400">
-          <span class="font-semibold text-slate-200">📺 Выбор серии:</span>
-          <span id="player-voice" class="text-[11px] text-indigo-400"></span>
+      <!-- EPISODE SELECTOR PILLS -->
+      <div id="episodes-wrapper" class="space-y-2.5 hidden">
+        <div class="flex items-center justify-between text-xs">
+          <span class="font-bold text-white flex items-center gap-1.5">
+            <svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+            Серии в плеере:
+          </span>
+          <span id="player-voice" class="text-[11px] font-semibold text-indigo-400 bg-indigo-500/10 px-2.5 py-0.5 rounded-full border border-indigo-500/20"></span>
         </div>
-        <div id="episodes-list" class="flex flex-wrap gap-2 max-h-32 overflow-y-auto pr-1">
-          <!-- Buttons generated by JS -->
+        <div id="episodes-list" class="flex flex-wrap gap-2 max-h-36 overflow-y-auto pr-1">
+          <!-- Episode numbers generated here -->
         </div>
       </div>
 
-      <!-- ANIME INFO BLOCK -->
+      <!-- HEADER INFO: POSTER + METADATA -->
       <div class="flex gap-4">
-        <img id="modal-poster" src="" alt="Poster" class="w-24 h-36 object-cover rounded-xl shadow-lg border border-darkborder flex-shrink-0">
-        <div class="flex-1 space-y-2 text-xs">
-          <div class="flex items-center gap-2">
-            <span id="modal-score" class="text-amber-400 font-bold">⭐ 8.5</span>
-            <span id="modal-year" class="text-slate-400">2026</span>
-            <span id="modal-episodes-info" class="text-slate-400">12 эп.</span>
+        <img id="modal-poster" src="" alt="Poster" class="w-24 h-36 object-cover rounded-2xl shadow-card-elevated border border-white/10 flex-shrink-0">
+        <div class="flex-1 space-y-2">
+          <h3 id="modal-title" class="text-base font-extrabold text-white leading-tight line-clamp-2">
+            Название аниме
+          </h3>
+          <div class="flex items-center gap-2 text-xs">
+            <span id="modal-score" class="flex items-center gap-1 text-amber-300 font-bold bg-amber-500/15 border border-amber-500/20 px-2 py-0.5 rounded-md">
+              <svg class="w-3 h-3 fill-amber-400" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              8.5
+            </span>
+            <span id="modal-year" class="text-slate-400 font-medium">2026</span>
+            <span id="modal-episodes-info" class="text-slate-400 font-medium">12 эп.</span>
           </div>
-          <div id="modal-genres" class="flex flex-wrap gap-1 text-[10px] text-indigo-300">
-            <!-- Badges -->
+          <div id="modal-genres" class="flex flex-wrap gap-1 pt-0.5">
+            <!-- Genre pills -->
           </div>
-          <p id="modal-synopsis" class="text-slate-300 text-xs line-clamp-3 leading-relaxed">
-            Описание аниме...
-          </p>
         </div>
       </div>
 
-      <!-- TRACKER ACTIONS BUTTONS -->
-      <div class="grid grid-cols-2 gap-2 pt-1 border-t border-darkborder/50 text-xs font-semibold">
-        <button id="btn-set-watching" class="py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center gap-1.5 transition">
-          <span>👀</span> Смотрю
-        </button>
-        <button id="btn-set-plan" class="py-2.5 px-3 rounded-xl bg-darkcard hover:bg-darkborder border border-darkborder text-slate-200 flex items-center justify-center gap-1.5 transition">
-          <span>📌</span> В планах
-        </button>
-        <button id="btn-set-completed" class="py-2.5 px-3 rounded-xl bg-darkcard hover:bg-darkborder border border-darkborder text-slate-200 flex items-center justify-center gap-1.5 transition">
-          <span>✅</span> Просмотрено
-        </button>
-        <button id="btn-toggle-fav" class="py-2.5 px-3 rounded-xl bg-darkcard hover:bg-darkborder border border-darkborder text-amber-300 flex items-center justify-center gap-1.5 transition">
-          <span>⭐</span> Избранное
-        </button>
+      <!-- SYNOPSIS DESCRIPTION -->
+      <div class="bg-dark-850 border border-white/5 rounded-2xl p-3.5 space-y-1">
+        <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Синопсис</span>
+        <p id="modal-synopsis" class="text-xs text-slate-300 leading-relaxed font-normal">
+          Описание отсутствует.
+        </p>
+      </div>
+
+      <!-- INTERACTIVE STATUS BUTTONS -->
+      <div class="space-y-2 pt-1">
+        <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Добавить в трекер</span>
+        <div class="grid grid-cols-2 gap-2 text-xs font-semibold">
+          <button id="btn-set-watching" class="py-3 px-3 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:opacity-90 text-white flex items-center justify-center gap-2 shadow-glow-indigo transition active:scale-95">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            Смотрю
+          </button>
+          <button id="btn-set-plan" class="py-3 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 flex items-center justify-center gap-2 transition active:scale-95">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+            В планах
+          </button>
+          <button id="btn-set-completed" class="py-3 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 flex items-center justify-center gap-2 transition active:scale-95">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            Просмотрено
+          </button>
+          <button id="btn-toggle-fav" class="py-3 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-amber-500/30 text-amber-300 flex items-center justify-center gap-2 transition active:scale-95">
+            <svg class="w-3.5 h-3.5 fill-amber-400" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            В избранное
+          </button>
+        </div>
       </div>
 
     </div>
   </div>
 
-  <!-- BOTTOM NAVIGATION BAR -->
-  <nav class="fixed bottom-0 inset-x-0 z-40 glass border-t border-darkborder px-6 py-2 flex items-center justify-around text-xs">
+  <!-- ========================================== -->
+  <!-- FLOATING MODERN BOTTOM DOCK NAVIGATION -->
+  <!-- ========================================== -->
+  <nav class="fixed bottom-3 inset-x-4 max-w-md mx-auto z-40 glass-nav rounded-2xl px-5 py-2.5 flex items-center justify-around shadow-2xl">
     <button id="nav-home" class="nav-btn active flex flex-col items-center gap-1 text-indigo-400 transition" onclick="switchTab('home')">
-      <span class="text-lg">🏠</span>
-      <span class="text-[10px] font-medium">Главная</span>
+      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+      </svg>
+      <span class="text-[10px] font-bold">Главная</span>
     </button>
-    <button id="nav-search" class="nav-btn flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200 transition" onclick="switchTab('search')">
-      <span class="text-lg">🔍</span>
-      <span class="text-[10px] font-medium">Поиск</span>
+    
+    <button id="nav-search" class="nav-btn flex flex-col items-center gap-1 text-slate-400 hover:text-white transition" onclick="switchTab('search')">
+      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <span class="text-[10px] font-bold">Поиск</span>
     </button>
-    <button id="nav-library" class="nav-btn flex flex-col items-center gap-1 text-slate-400 hover:text-slate-200 transition" onclick="switchTab('library')">
-      <span class="text-lg">📋</span>
-      <span class="text-[10px] font-medium">Мой список</span>
+    
+    <button id="nav-library" class="nav-btn flex flex-col items-center gap-1 text-slate-400 hover:text-white transition" onclick="switchTab('library')">
+      <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+      </svg>
+      <span class="text-[10px] font-bold">Мой список</span>
     </button>
   </nav>
 
-  <!-- JAVASCRIPT LOGIC -->
+  <!-- SCRIPT LOGIC -->
   <script>
-    // Initialize Telegram WebApp
     const tg = window.Telegram?.WebApp;
     if (tg) {
       tg.ready();
       tg.expand();
     }
 
-    // Current user context
     const user = tg?.initDataUnsafe?.user || { id: 8648632519, first_name: "Пользователь" };
     document.getElementById('user-name').textContent = user.first_name || 'Профиль';
 
     let currentCard = null;
     let currentLibraryStatus = 'watching';
 
-    // TAB SWITCHER
-    function switchTab(tab) {
+    function haptic() {
       tg?.HapticFeedback?.impactOccurred('light');
+    }
+
+    function switchTab(tab) {
+      haptic();
       ['home', 'search', 'library'].forEach(t => {
         document.getElementById(`view-${t}`).classList.add('hidden');
         document.getElementById(`nav-${t}`).classList.remove('text-indigo-400');
@@ -293,22 +418,20 @@
       if (tab === 'library') loadLibrary(currentLibraryStatus);
     }
 
-    // HAPTIC FEEDBACK HELPER
-    function haptic() {
-      tg?.HapticFeedback?.impactOccurred('light');
-    }
-
-    // LOAD FEED ON START
+    // LOAD FEED
     async function loadFeed() {
       try {
         const res = await fetch('/api/feed');
         const data = await res.json();
         
-        // Hero setup
         if (data.airing && data.airing.length > 0) {
           const hero = data.airing[0];
           document.getElementById('hero-title').textContent = hero.title_ru || hero.title_en;
-          document.getElementById('hero-score').textContent = `⭐ ${hero.score || '9.0'}`;
+          document.getElementById('hero-score').innerHTML = `
+            <svg class="w-3 h-3 fill-amber-400" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            ${hero.score || '9.1'}
+          `;
+          document.getElementById('hero-episodes').textContent = hero.episodes ? `${hero.episodes} серий` : 'Онгоинг';
           document.getElementById('hero-img').src = hero.image_url;
           document.getElementById('hero-banner').onclick = () => openCard(hero.shikimori_id || hero.mal_id);
         }
@@ -324,26 +447,35 @@
     function renderCarousel(elemId, items) {
       const container = document.getElementById(elemId);
       if (!items || items.length === 0) {
-        container.innerHTML = '<div class="text-xs text-slate-500 py-2">Нет данных</div>';
+        container.innerHTML = '<div class="text-xs text-slate-500 py-3">Нет данных</div>';
         return;
       }
       container.innerHTML = items.map(item => `
-        <div class="carousel-item flex-shrink-0 cursor-pointer group" onclick="openCard(${item.shikimori_id || item.mal_id})">
-          <div class="relative rounded-xl overflow-hidden aspect-[3/4] bg-darkcard border border-darkborder shadow group-active:scale-95 transition">
-            <img src="${item.image_url}" alt="${item.title_ru || item.title_en}" class="w-full h-full object-cover" loading="lazy">
-            <div class="absolute top-1.5 left-1.5 bg-black/70 backdrop-blur px-1.5 py-0.5 rounded text-[10px] font-bold text-amber-300">
-              ⭐ ${item.score || '—'}
+        <div class="media-card cursor-pointer group flex-shrink-0" onclick="openCard(${item.shikimori_id || item.mal_id})">
+          <div class="relative rounded-2xl overflow-hidden aspect-[3/4] bg-dark-900 border border-white/10 shadow-card-elevated group-hover:border-indigo-500/50 group-active:scale-[0.96] transition-all duration-300">
+            <img src="${item.image_url}" alt="${item.title_ru || item.title_en}" class="w-full h-full object-cover group-hover:scale-105 transition-all duration-500" loading="lazy">
+            <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/20"></div>
+            <div class="absolute top-2 left-2 glass-pill px-2 py-0.5 rounded-lg text-[10px] font-bold text-amber-300 flex items-center gap-1 shadow">
+              <svg class="w-2.5 h-2.5 fill-amber-400" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              ${item.score || '—'}
             </div>
-            ${item.episodes ? `<div class="absolute bottom-1.5 right-1.5 bg-black/70 backdrop-blur px-1.5 py-0.5 rounded text-[10px] text-slate-200">${item.episodes} эп.</div>` : ''}
+            ${item.episodes ? `
+              <div class="absolute bottom-2 right-2 glass-pill px-2 py-0.5 rounded-md text-[10px] font-semibold text-slate-200">
+                ${item.episodes} эп.
+              </div>
+            ` : ''}
           </div>
-          <div class="text-xs font-semibold text-slate-200 mt-1.5 line-clamp-1 group-hover:text-indigo-400 transition">
+          <div class="text-xs font-bold text-slate-100 mt-2 line-clamp-1 group-hover:text-indigo-400 transition">
             ${item.title_ru || item.title_en}
+          </div>
+          <div class="text-[10px] font-medium text-slate-400 mt-0.5">
+            ${item.year ? item.year : 'Онгоинг'}
           </div>
         </div>
       `).join('');
     }
 
-    // SEARCH WITH DEBOUNCE
+    // SEARCH
     let debounceTimer;
     document.getElementById('search-input').addEventListener('input', (e) => {
       clearTimeout(debounceTimer);
@@ -352,14 +484,13 @@
         document.getElementById('search-results').innerHTML = '';
         return;
       }
-      debounceTimer = setTimeout(() => performSearch(query), 350);
+      debounceTimer = setTimeout(() => performSearch(query), 300);
     });
 
     async function performSearch(query) {
       const statusEl = document.getElementById('search-status');
       const resultsEl = document.getElementById('search-results');
       statusEl.classList.remove('hidden');
-      statusEl.textContent = `Поиск «${query}»...`;
 
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
@@ -367,26 +498,29 @@
         statusEl.classList.add('hidden');
 
         if (!cards || cards.length === 0) {
-          resultsEl.innerHTML = '<div class="col-span-2 text-center text-slate-500 py-8 text-xs">Ничего не найдено</div>';
+          resultsEl.innerHTML = '<div class="col-span-2 text-center text-slate-500 py-10 text-xs font-medium">Ничего не найдено</div>';
           return;
         }
 
         resultsEl.innerHTML = cards.map(c => `
-          <div class="bg-darkcard border border-darkborder rounded-xl p-2.5 cursor-pointer active:scale-98 transition flex flex-col" onclick="openCard(${c.shikimori_id || c.mal_id})">
-            <div class="aspect-[3/4] rounded-lg overflow-hidden relative bg-black">
-              <img src="${c.image_url}" alt="${c.title_ru || c.title_en}" class="w-full h-full object-cover">
-              <span class="absolute top-1.5 left-1.5 bg-black/80 px-1.5 py-0.5 rounded text-[10px] font-bold text-amber-300">⭐ ${c.score || '—'}</span>
+          <div class="bg-dark-850 border border-white/10 rounded-2xl p-2.5 cursor-pointer hover:border-indigo-500/50 active:scale-[0.97] transition-all flex flex-col group" onclick="openCard(${c.shikimori_id || c.mal_id})">
+            <div class="aspect-[3/4] rounded-xl overflow-hidden relative bg-black shadow-card-elevated">
+              <img src="${c.image_url}" alt="${c.title_ru || c.title_en}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500">
+              <span class="absolute top-2 left-2 glass-pill px-2 py-0.5 rounded-lg text-[10px] font-bold text-amber-300 flex items-center gap-1 shadow">
+                <svg class="w-2.5 h-2.5 fill-amber-400" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                ${c.score || '—'}
+              </span>
             </div>
-            <div class="mt-2 text-xs font-semibold line-clamp-2 text-slate-200">${c.title_ru || c.title_en}</div>
-            <div class="text-[10px] text-slate-400 mt-auto pt-1">${c.year || ''} ${c.episodes ? `· ${c.episodes} эп.` : ''}</div>
+            <div class="mt-2 text-xs font-bold line-clamp-1 text-slate-100 group-hover:text-indigo-400 transition">${c.title_ru || c.title_en}</div>
+            <div class="text-[10px] text-slate-400 mt-auto pt-1 font-medium">${c.year || ''} ${c.episodes ? `· ${c.episodes} эп.` : ''}</div>
           </div>
         `).join('');
       } catch (e) {
-        statusEl.textContent = 'Ошибка поиска';
+        statusEl.classList.add('hidden');
       }
     }
 
-    // OPEN ANIME MODAL & PLAYER
+    // OPEN CARD & PLAYER
     async function openCard(animeId) {
       haptic();
       const modal = document.getElementById('detail-modal');
@@ -399,18 +533,21 @@
 
         document.getElementById('modal-title').textContent = data.title_ru || data.title_en;
         document.getElementById('modal-poster').src = data.image_url;
-        document.getElementById('modal-score').textContent = `⭐ ${data.score || '—'}`;
+        document.getElementById('modal-score').innerHTML = `
+          <svg class="w-3 h-3 fill-amber-400" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          ${data.score || '—'}
+        `;
         document.getElementById('modal-year').textContent = data.year || '';
-        document.getElementById('modal-episodes-info').textContent = data.episodes ? `${data.episodes} эп.` : '';
+        document.getElementById('modal-episodes-info').textContent = data.episodes ? `${data.episodes} эп.` : 'Онгоинг';
         document.getElementById('modal-synopsis').textContent = data.synopsis_ru || 'Описание отсутствует.';
         
         // Genres
         const genresEl = document.getElementById('modal-genres');
         genresEl.innerHTML = (data.genres || []).slice(0, 4).map(g => `
-          <span class="bg-darkborder/60 px-1.5 py-0.5 rounded border border-darkborder">${g}</span>
+          <span class="bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-2 py-0.5 rounded-md text-[10px] font-semibold">${g}</span>
         `).join('');
 
-        // Player & Episodes
+        // Player
         const playerContainer = document.getElementById('player-container');
         const videoFrame = document.getElementById('video-frame');
         const epWrapper = document.getElementById('episodes-wrapper');
@@ -419,14 +556,14 @@
         if (data.kodik && data.kodik.url) {
           playerContainer.classList.remove('hidden');
           videoFrame.src = data.kodik.url;
-          document.getElementById('player-voice').textContent = data.kodik.translation || '';
+          document.getElementById('player-voice').textContent = data.kodik.translation || 'Стандартная';
 
           if (data.kodik.episodes && Object.keys(data.kodik.episodes).length > 0) {
             epWrapper.classList.remove('hidden');
             const epKeys = Object.keys(data.kodik.episodes).map(Number).sort((a,b)=>a-b);
             epList.innerHTML = epKeys.map(epNum => `
               <button 
-                class="px-2.5 py-1 rounded bg-darkcard border border-darkborder text-xs hover:bg-indigo-600 hover:text-white transition"
+                class="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition active:scale-95"
                 onclick="changeEpisode('${data.kodik.episodes[epNum]}', ${epNum})"
               >
                 ${epNum}
@@ -449,7 +586,6 @@
       haptic();
       const videoFrame = document.getElementById('video-frame');
       videoFrame.src = url;
-      // Auto-update episode in user's library
       if (currentCard) {
         fetch('/api/library/episode', {
           method: 'POST',
@@ -463,14 +599,12 @@
       }
     }
 
-    // CLOSE MODAL
     document.getElementById('modal-close').onclick = () => {
       haptic();
       document.getElementById('detail-modal').classList.add('hidden');
-      document.getElementById('video-frame').src = ''; // stop playback
+      document.getElementById('video-frame').src = '';
     };
 
-    // TRACKER BUTTON ACTIONS
     async function setStatus(status) {
       if (!currentCard) return;
       haptic();
@@ -486,7 +620,7 @@
             status: status
           })
         });
-        tg?.showPopup?.({ message: `Статус изменен на: ${status}` });
+        tg?.showPopup?.({ message: `Статус сохранён: ${status}` });
       } catch (e) {
         console.error(e);
       }
@@ -508,19 +642,19 @@
           lang: 'ru'
         })
       });
-      tg?.showPopup?.({ message: 'Обновлено в избранном!' });
+      tg?.showPopup?.({ message: 'Обновлено в избранном ⭐' });
     };
 
-    // LIBRARY TAB FILTER
+    // LIBRARY
     document.querySelectorAll('.lib-tab').forEach(btn => {
       btn.onclick = (e) => {
         haptic();
         document.querySelectorAll('.lib-tab').forEach(b => {
-          b.classList.remove('bg-indigo-600', 'text-white');
-          b.classList.add('bg-darkcard', 'text-slate-300');
+          b.classList.remove('bg-indigo-600', 'text-white', 'shadow-glow-indigo');
+          b.classList.add('text-slate-400');
         });
-        e.target.classList.add('bg-indigo-600', 'text-white');
-        e.target.classList.remove('bg-darkcard', 'text-slate-300');
+        e.target.classList.add('bg-indigo-600', 'text-white', 'shadow-glow-indigo');
+        e.target.classList.remove('text-slate-400');
         currentLibraryStatus = e.target.dataset.status;
         loadLibrary(currentLibraryStatus);
       };
@@ -528,25 +662,33 @@
 
     async function loadLibrary(status) {
       const container = document.getElementById('library-list');
-      container.innerHTML = '<div class="text-center text-xs text-slate-500 py-6">Загрузка библиотеки...</div>';
+      container.innerHTML = '<div class="text-center text-xs text-slate-500 py-6">Загрузка...</div>';
       try {
         const res = await fetch(`/api/library?user_id=${user.id}&status=${status}`);
         const items = await res.json();
         if (!items || items.length === 0) {
-          container.innerHTML = '<div class="text-center text-xs text-slate-500 py-12">Здесь пока пусто. Добавьте аниме через поиск!</div>';
+          container.innerHTML = `
+            <div class="text-center py-14 space-y-2">
+              <div class="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 mx-auto flex items-center justify-center text-slate-400">
+                <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+              </div>
+              <p class="text-xs font-semibold text-slate-400">В этом списке пока ничего нет</p>
+              <p class="text-[11px] text-slate-500">Добавьте аниме через поиск</p>
+            </div>
+          `;
           return;
         }
         container.innerHTML = items.map(item => `
-          <div class="glass border border-darkborder rounded-xl p-3 flex items-center justify-between cursor-pointer active:scale-98 transition" onclick="openCard(${item.mal_id})">
-            <div class="space-y-1">
-              <div class="text-sm font-semibold text-slate-100 line-clamp-1">${item.title}</div>
-              <div class="text-[11px] text-slate-400">
-                Серия: <span class="font-bold text-indigo-400">${item.current_episode || 0}</span>
-                ${item.is_favorite ? ' · ⭐ Избранное' : ''}
+          <div class="glass-card rounded-2xl p-3.5 flex items-center justify-between cursor-pointer active:scale-[0.98] transition group" onclick="openCard(${item.mal_id})">
+            <div class="space-y-1 pr-3">
+              <div class="text-xs font-bold text-white group-hover:text-indigo-400 transition line-clamp-1">${item.title}</div>
+              <div class="text-[11px] font-medium text-slate-400 flex items-center gap-2">
+                <span>Серия: <b class="text-indigo-400">${item.current_episode || 0}</b></span>
+                ${item.is_favorite ? '<span class="text-amber-400">⭐ Избранное</span>' : ''}
               </div>
             </div>
-            <button class="bg-indigo-600/30 hover:bg-indigo-600 text-indigo-300 hover:text-white px-2.5 py-1 rounded text-xs border border-indigo-500/30 transition" onclick="event.stopPropagation(); incEpisode(${item.mal_id}, ${item.current_episode || 0})">
-              +1 эп.
+            <button class="bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white px-3 py-1.5 rounded-xl text-xs font-bold border border-indigo-500/30 transition flex items-center gap-1 active:scale-95" onclick="event.stopPropagation(); incEpisode(${item.mal_id}, ${item.current_episode || 0})">
+              <span>+1 эп.</span>
             </button>
           </div>
         `).join('');
@@ -569,7 +711,6 @@
       loadLibrary(currentLibraryStatus);
     }
 
-    // INITIAL LOAD
     loadFeed();
   </script>
 </body>
