@@ -518,7 +518,32 @@
     const user = tg?.initDataUnsafe?.user || { id: 8648632519, first_name: "Пользователь" };
     document.getElementById('user-name').textContent = user.first_name || 'Профиль';
 
+    // Central API fetch helper that attaches verified Telegram initData
+    function apiFetch(url, options = {}) {
+      options.headers = options.headers || {};
+      if (tg?.initData) {
+        options.headers['X-Telegram-Init-Data'] = tg.initData;
+      }
+      return fetch(url, options);
+    }
+
+    // Verify user on backend
+    if (tg?.initData) {
+      apiFetch('/api/user/me')
+        .then(r => r.json())
+        .then(data => {
+          if (data?.user?.first_name) {
+            document.getElementById('user-name').textContent = data.user.first_name;
+          }
+        })
+        .catch(() => {});
+    }
+
     let currentCard = null;
+    let currentPlayingEpisode = 1;
+    let lastProgressSent = 0;
+    const completedEpisodes = new Set();
+
     let currentLibraryStatus = 'watching';
     let selectedVibeScore = 7;
     let selectedVibeYearFrom = 2020;
@@ -790,6 +815,14 @@
       const modal = document.getElementById('detail-modal');
       modal.classList.remove('hidden');
 
+      // Clear previous status & favorite button highlights
+      ['watching', 'plan', 'completed'].forEach(s => {
+        const btn = document.getElementById(`btn-set-${s}`);
+        if (btn) btn.classList.remove('status-btn-active');
+      });
+      const favBtn = document.getElementById('btn-toggle-fav');
+      if (favBtn) favBtn.classList.remove('status-btn-active');
+
       try {
         const res = await fetch(`/api/anime/${animeId}`);
         const data = await res.json();
@@ -827,6 +860,7 @@
           if (data.kodik.episodes && Object.keys(data.kodik.episodes).length > 0) {
             epWrapper.classList.remove('hidden');
             const epKeys = Object.keys(data.kodik.episodes).map(Number).sort((a,b)=>a-b);
+            currentPlayingEpisode = epKeys[0] || 1;
             epList.innerHTML = epKeys.map((epNum, idx) => `
               <button 
                 id="ep-btn-${epNum}"
@@ -844,16 +878,31 @@
           epWrapper.classList.add('hidden');
         }
 
+        // Fetch user title state (status, current_episode, is_favorite)
+        apiFetch(`/api/library/title/${animeId}?user_id=${user.id}`)
+          .then(r => r.json())
+          .then(state => {
+            if (state && state.status) {
+              const activeBtn = document.getElementById(`btn-set-${state.status}`);
+              if (activeBtn) activeBtn.classList.add('status-btn-active');
+            }
+            if (state && state.is_favorite) {
+              const favBtnEl = document.getElementById('btn-toggle-fav');
+              if (favBtnEl) favBtnEl.classList.add('status-btn-active');
+            }
+            if (state && state.current_episode && state.current_episode > 0) {
+              currentPlayingEpisode = state.current_episode;
+              highlightActiveEpisode(state.current_episode);
+            }
+          })
+          .catch(() => {});
+
       } catch (e) {
         console.error('Card load error:', e);
       }
     }
 
-    function changeEpisode(url, epNum) {
-      haptic();
-      const videoFrame = document.getElementById('video-frame');
-      videoFrame.src = url;
-
+    function highlightActiveEpisode(epNum) {
       document.querySelectorAll('.ep-btn').forEach(b => {
         b.className = 'ep-btn px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-slate-200 text-xs font-bold hover:bg-indigo-600 hover:text-white transition active:scale-95';
       });
@@ -861,21 +910,109 @@
       if (activeBtn) {
         activeBtn.className = 'ep-btn px-3 py-1.5 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 text-white border border-indigo-400 text-xs font-bold shadow-glow-indigo transition active:scale-95';
       }
+    }
 
+    function changeEpisode(url, epNum) {
+      haptic();
+      currentPlayingEpisode = epNum;
+      const videoFrame = document.getElementById('video-frame');
+      videoFrame.src = url;
+
+      highlightActiveEpisode(epNum);
       showToast(`Включена ${epNum} серия 🎬`);
 
       if (currentCard) {
-        fetch('/api/library/episode', {
+        apiFetch('/api/library/episode', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             user_id: user.id,
             mal_id: currentCard.shikimori_id || currentCard.mal_id,
+            title: currentCard.title_ru || currentCard.title_en,
+            lang: 'ru',
             episode: epNum
           })
-        });
+        }).catch(console.error);
       }
     }
+
+    // Kodik & PlayerJS postMessage Listener for Watch Progress
+    window.addEventListener('message', (event) => {
+      let msg = event.data;
+      if (typeof msg === 'string') {
+        try { msg = JSON.parse(msg); } catch (e) { return; }
+      }
+      if (!msg || typeof msg !== 'object') return;
+
+      let currentTime = 0;
+      let duration = 0;
+      let isEnded = false;
+
+      if (msg.key === 'kodik_player_time_update' && msg.value) {
+        currentTime = Number(msg.value.time || 0);
+        duration = Number(msg.value.duration || 0);
+      } else if (msg.key === 'kodik_player_video_ended') {
+        isEnded = true;
+      } else if (msg.event === 'time') {
+        currentTime = Number(msg.value || 0);
+        duration = Number(msg.duration || 0);
+      } else if (msg.event === 'finish') {
+        isEnded = true;
+      }
+
+      if (!currentCard) return;
+      const malId = currentCard.shikimori_id || currentCard.mal_id;
+      if (!malId) return;
+
+      const title = currentCard.title_ru || currentCard.title_en || '';
+      const epKey = `${malId}-${currentPlayingEpisode}`;
+      const reachedThreshold = duration > 60 && (currentTime / duration >= 0.85);
+
+      if ((isEnded || reachedThreshold) && !completedEpisodes.has(epKey)) {
+        completedEpisodes.add(epKey);
+        haptic();
+        showToast(`Серия ${currentPlayingEpisode} просмотрена! ✨`);
+
+        apiFetch('/api/library/progress', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: user.id,
+            mal_id: malId,
+            title: title,
+            lang: 'ru',
+            episode: currentPlayingEpisode,
+            position: Math.floor(currentTime),
+            duration: Math.floor(duration),
+            completed: true
+          })
+        }).catch(console.error);
+
+        const epBtn = document.getElementById(`ep-btn-${currentPlayingEpisode}`);
+        if (epBtn && !epBtn.innerText.includes('✓')) {
+          epBtn.innerHTML = `${currentPlayingEpisode} <span class="text-emerald-400 text-[10px]">✓</span>`;
+        }
+      } else if (currentTime > 0) {
+        const now = Date.now();
+        if (now - lastProgressSent > 20000) {
+          lastProgressSent = now;
+          apiFetch('/api/library/progress', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              user_id: user.id,
+              mal_id: malId,
+              title: title,
+              lang: 'ru',
+              episode: currentPlayingEpisode,
+              position: Math.floor(currentTime),
+              duration: Math.floor(duration),
+              completed: false
+            })
+          }).catch(console.error);
+        }
+      }
+    });
 
     document.getElementById('modal-close').onclick = () => {
       haptic();
@@ -901,7 +1038,7 @@
       if (activeBtn) activeBtn.classList.add('status-btn-active');
 
       try {
-        await fetch('/api/library/status', {
+        await apiFetch('/api/library/status', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -926,7 +1063,7 @@
       if (!currentCard) return;
       haptic();
       try {
-        const res = await fetch('/api/library/favorite', {
+        const res = await apiFetch('/api/library/favorite', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -969,7 +1106,7 @@
       const container = document.getElementById('library-list');
       container.innerHTML = '<div class="text-center text-xs text-slate-500 py-6">Загрузка...</div>';
       try {
-        const res = await fetch(`/api/library?user_id=${user.id}&status=${status}`);
+        const res = await apiFetch(`/api/library?user_id=${user.id}&status=${status}`);
         const items = await res.json();
         if (!items || items.length === 0) {
           container.innerHTML = `
@@ -992,7 +1129,7 @@
                 ${item.is_favorite ? '<span class="text-amber-400">⭐ Избранное</span>' : ''}
               </div>
             </div>
-            <button class="bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white px-3 py-1.5 rounded-xl text-xs font-bold border border-indigo-500/30 transition flex items-center gap-1 active:scale-95" onclick="event.stopPropagation(); incEpisode(${item.mal_id}, ${item.current_episode || 0})">
+            <button class="bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white px-3 py-1.5 rounded-xl text-xs font-bold border border-indigo-500/30 transition flex items-center gap-1 active:scale-95" onclick="event.stopPropagation(); incEpisode(${item.mal_id}, ${item.current_episode || 0}, '${(item.title || '').replace(/'/g, "\\'")}')">
               <span>+1 эп.</span>
             </button>
           </div>
@@ -1002,14 +1139,16 @@
       }
     }
 
-    async function incEpisode(malId, currentEp) {
+    async function incEpisode(malId, currentEp, title = '') {
       haptic();
-      await fetch('/api/library/episode', {
+      await apiFetch('/api/library/episode', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: user.id,
           mal_id: malId,
+          title: title,
+          lang: 'ru',
           episode: currentEp + 1
         })
       });

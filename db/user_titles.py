@@ -64,9 +64,24 @@ async def _ensure_row(db: aiosqlite.Connection, user_id: int, mal_id: int, title
     await db.execute(
         """INSERT INTO user_titles (user_id, mal_id, title, lang, updated_at)
            VALUES (?, ?, ?, ?, ?)
-           ON CONFLICT(user_id, mal_id) DO UPDATE SET title = excluded.title, lang = excluded.lang""",
+           ON CONFLICT(user_id, mal_id) DO UPDATE SET
+               title = CASE WHEN excluded.title != '' THEN excluded.title ELSE user_titles.title END,
+               lang = excluded.lang,
+               updated_at = excluded.updated_at""",
         (user_id, mal_id, title, lang, now),
     )
+
+
+async def get_title_state(user_id: int, mal_id: int) -> dict:
+    """Returns compact state for a title (status, episode, favorite)."""
+    row = await get(user_id, mal_id)
+    if not row:
+        return {"status": None, "current_episode": 0, "is_favorite": False}
+    return {
+        "status": row.get("status"),
+        "current_episode": row.get("current_episode", 0),
+        "is_favorite": row.get("is_favorite", False),
+    }
 
 
 async def set_status(user_id: int, mal_id: int, title: str, lang: str, status: str) -> None:

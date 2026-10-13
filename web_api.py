@@ -1,5 +1,9 @@
+import hashlib
+import hmac
+import json
 import logging
 import os
+import urllib.parse
 from pathlib import Path
 from typing import Optional
 
@@ -10,18 +14,19 @@ for _key in ("NO_PROXY", "no_proxy"):
         _cleaned = [item.strip().lstrip("*.") for item in _val.split(",") if item.strip()]
         os.environ[_key] = ",".join(_cleaned)
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from config import settings
 from db import user_titles
 from services import aggregator, kodik, shikimori
 
 _log = logging.getLogger(__name__)
 
-app = FastAPI(title="EnjoyAnime Mini App API", version="1.0.0")
+app = FastAPI(title="EnjoyAnime Mini App API", version="1.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,25 +40,105 @@ STATIC_DIR = Path(__file__).parent / "static"
 STATIC_DIR.mkdir(exist_ok=True)
 
 
+def verify_telegram_init_data(init_data: str, bot_token: str) -> dict | None:
+    """
+    Validates Telegram WebApp initData string using HMAC-SHA256 according to Telegram specifications.
+    Returns parsed dictionary (including parsed user dict) if valid, else None.
+    """
+    if not init_data or not bot_token:
+        return None
+    try:
+        parsed = dict(urllib.parse.parse_qsl(init_data, keep_blank_values=True))
+        if "hash" not in parsed:
+            return None
+        received_hash = parsed.pop("hash")
+
+        # 1. Sort all key=value pairs alphabetically by key, separated by '\n'
+        data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
+
+        # 2. secret_key = HMAC_SHA256(b"WebAppData", bot_token)
+        secret_key = hmac.new(b"WebAppData", bot_token.encode("utf-8"), hashlib.sha256).digest()
+
+        # 3. hash = HMAC_SHA256(secret_key, data_check_string).hexdigest()
+        computed_hash = hmac.new(secret_key, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
+
+        if not hmac.compare_digest(computed_hash, received_hash):
+            return None
+
+        # Parse user field if present
+        if "user" in parsed:
+            try:
+                parsed["user"] = json.loads(parsed["user"])
+            except Exception:
+                pass
+        return parsed
+    except Exception as e:
+        _log.warning("Telegram initData verification exception: %s", e)
+        return None
+
+
+async def get_current_user(
+    request: Request,
+    x_telegram_init_data: Optional[str] = Header(None, alias="X-Telegram-Init-Data"),
+    user_id: Optional[int] = Query(None),
+) -> dict:
+    """
+    Resolves the Telegram user for the current request.
+    If initData header is provided, it validates the signature against BOT_TOKEN.
+    Falls back gracefully if running in development / test mode without initData.
+    """
+    raw_data = x_telegram_init_data
+    if not raw_data:
+        auth_hdr = request.headers.get("Authorization", "")
+        if auth_hdr.startswith("tma "):
+            raw_data = auth_hdr[4:].strip()
+        elif auth_hdr.startswith("Bearer "):
+            raw_data = auth_hdr[7:].strip()
+
+    if raw_data:
+        verified = verify_telegram_init_data(raw_data, settings.bot_token)
+        if verified and "user" in verified and isinstance(verified["user"], dict):
+            return verified["user"]
+        raise HTTPException(status_code=401, detail="Invalid Telegram initData signature")
+
+    if user_id:
+        return {"id": user_id, "first_name": "DevUser", "is_dev": True}
+
+    return {"id": 0, "first_name": "Гость", "is_anonymous": True}
+
+
 class StatusUpdateRequest(BaseModel):
-    user_id: int
+    user_id: Optional[int] = None
     mal_id: int
-    title: str
+    title: str = ""
     lang: str = "ru"
     status: str
 
 
 class EpisodeUpdateRequest(BaseModel):
-    user_id: int
+    user_id: Optional[int] = None
     mal_id: int
+    title: str = ""
+    lang: str = "ru"
     episode: int
 
 
 class FavoriteToggleRequest(BaseModel):
-    user_id: int
+    user_id: Optional[int] = None
     mal_id: int
-    title: str
+    title: str = ""
     lang: str = "ru"
+
+
+class PlaybackProgressRequest(BaseModel):
+    user_id: Optional[int] = None
+    mal_id: int
+    title: str = ""
+    lang: str = "ru"
+    episode: int = 1
+    position: int = 0
+    duration: int = 0
+    completed: bool = False
 
 
 @app.get("/api/health")
@@ -152,59 +237,147 @@ async def get_anime_details(anime_id: int, lang: str = "ru"):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/user/me")
+async def get_me(user: dict = Depends(get_current_user)):
+    """Returns the verified Telegram user profile."""
+    return {
+        "authenticated": not user.get("is_anonymous", False),
+        "user": user,
+    }
+
+
 @app.get("/api/library")
-async def get_user_library(user_id: int, status: Optional[str] = None):
+async def get_user_library(
+    status: Optional[str] = None,
+    user_id: Optional[int] = None,
+    user: dict = Depends(get_current_user),
+):
     """Get user tracked titles from SQLite."""
+    target_id = user["id"] if user.get("id") else (user_id or 0)
+    if not target_id:
+        return []
     try:
-        items = await user_titles.list_by_status(user_id, status)
+        items = await user_titles.list_by_status(target_id, status)
         return items
     except Exception as e:
         _log.exception("Library error: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/library/title/{anime_id}")
+async def get_title_library_state(
+    anime_id: int,
+    user_id: Optional[int] = None,
+    user: dict = Depends(get_current_user),
+):
+    """Returns whether the title is saved, which episode, and favorite status."""
+    target_id = user["id"] if user.get("id") else (user_id or 0)
+    if not target_id:
+        return {"status": None, "current_episode": 0, "is_favorite": False}
+    try:
+        state = await user_titles.get_title_state(target_id, anime_id)
+        return state
+    except Exception as e:
+        _log.exception("Title state error: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/library/status")
-async def update_library_status(req: StatusUpdateRequest):
+async def update_library_status(
+    req: StatusUpdateRequest,
+    user: dict = Depends(get_current_user),
+):
+    target_id = user["id"] if user.get("id") else (req.user_id or 0)
+    if not target_id:
+        raise HTTPException(status_code=400, detail="Missing user identification")
     try:
         await user_titles.set_status(
-            user_id=req.user_id,
+            user_id=target_id,
             mal_id=req.mal_id,
             title=req.title,
             lang=req.lang,
             status=req.status,
         )
-        return {"ok": True, "status": req.status}
+        return {"ok": True, "status": req.status, "user_id": target_id}
     except Exception as e:
         _log.exception("Update status error: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/library/episode")
-async def update_library_episode(req: EpisodeUpdateRequest):
+async def update_library_episode(
+    req: EpisodeUpdateRequest,
+    user: dict = Depends(get_current_user),
+):
+    target_id = user["id"] if user.get("id") else (req.user_id or 0)
+    if not target_id:
+        raise HTTPException(status_code=400, detail="Missing user identification")
     try:
         await user_titles.set_episode(
-            user_id=req.user_id,
+            user_id=target_id,
             mal_id=req.mal_id,
+            title=req.title,
+            lang=req.lang,
             episode=req.episode,
         )
-        return {"ok": True, "episode": req.episode}
+        return {"ok": True, "episode": req.episode, "user_id": target_id}
     except Exception as e:
         _log.exception("Update episode error: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/library/favorite")
-async def toggle_library_favorite(req: FavoriteToggleRequest):
+async def toggle_library_favorite(
+    req: FavoriteToggleRequest,
+    user: dict = Depends(get_current_user),
+):
+    target_id = user["id"] if user.get("id") else (req.user_id or 0)
+    if not target_id:
+        raise HTTPException(status_code=400, detail="Missing user identification")
     try:
         new_fav = await user_titles.toggle_favorite(
-            user_id=req.user_id,
+            user_id=target_id,
             mal_id=req.mal_id,
             title=req.title,
             lang=req.lang,
         )
-        return {"ok": True, "is_favorite": new_fav}
+        return {"ok": True, "is_favorite": new_fav, "user_id": target_id}
     except Exception as e:
         _log.exception("Toggle favorite error: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/library/progress")
+async def save_playback_progress(
+    req: PlaybackProgressRequest,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Saves video playback progress and auto-advances episode if 85%+ watched or finished.
+    """
+    target_id = user["id"] if user.get("id") else (req.user_id or 0)
+    if not target_id:
+        raise HTTPException(status_code=400, detail="Missing user identification")
+
+    is_completed = req.completed or (req.duration > 0 and (req.position / req.duration) >= 0.85)
+    try:
+        if is_completed:
+            await user_titles.set_episode(
+                user_id=target_id,
+                mal_id=req.mal_id,
+                title=req.title,
+                lang=req.lang,
+                episode=req.episode,
+            )
+        return {
+            "ok": True,
+            "completed": is_completed,
+            "episode": req.episode,
+            "position": req.position,
+            "user_id": target_id,
+        }
+    except Exception as e:
+        _log.exception("Progress save error: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
