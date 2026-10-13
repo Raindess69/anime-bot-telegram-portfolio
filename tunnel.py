@@ -20,6 +20,10 @@ ENV_PATH = Path(__file__).parent / ".env"
 PORT = int(os.getenv("WEB_PORT", "8080"))
 
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True)
+
+
 def update_env_file(key: str, value: str) -> None:
     """Updates or appends a KEY=VALUE pair in .env file."""
     if not ENV_PATH.exists():
@@ -57,7 +61,7 @@ def start_pinggy_tunnel():
     https_url = None
     for line in iter(proc.stdout.readline, ""):
         print(line, end="")
-        match = re.search(r"https://[a-zA-Z0-9-]+\.a\.pinggy\.link", line)
+        match = re.search(r"https://[a-zA-Z0-9.-]+\.(?:run\.pinggy-free\.link|run\.pinggy\.link|a\.pinggy\.link|pinggy\.link)", line)
         if match:
             https_url = match.group(0)
             print("\n" + "=" * 50)

@@ -39,17 +39,32 @@ def sanitize_no_proxy() -> None:
 
 
 def get_current_proxy() -> str | None:
-    """Read proxy from os.environ or reload fresh credentials from .env."""
+    """Read proxy from .proxy file, fresh .env, or os.environ."""
+    from pathlib import Path
+    for proxy_file in (Path(".proxy"), Path("/tmp/current_proxy")):
+        try:
+            if proxy_file.exists():
+                content = proxy_file.read_text(encoding="utf-8").strip()
+                if content:
+                    return content
+        except Exception:
+            pass
+
     try:
-        from dotenv import load_dotenv
-        load_dotenv(override=True)
+        from dotenv import dotenv_values
+        env_vals = dotenv_values(".env")
+        for key in ("HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy", "BOT_PROXY"):
+            if env_vals.get(key):
+                return env_vals[key]
     except Exception:
         pass
+
     return (
         os.getenv("HTTPS_PROXY")
         or os.getenv("HTTP_PROXY")
         or os.getenv("https_proxy")
         or os.getenv("http_proxy")
+        or os.getenv("BOT_PROXY")
     )
 
 
@@ -61,6 +76,25 @@ def mask_proxy(proxy_url: str | None) -> str:
         schema = schema_and_creds.split("://", 1)[0] if "://" in schema_and_creds else "http"
         return f"{schema}://***@{host}"
     return proxy_url
+
+
+async def refresh_menu_button(bot: Bot) -> None:
+    """Re-reads .env and updates Telegram Menu Button if tunnel URL changed."""
+    try:
+        from dotenv import dotenv_values
+        vals = dotenv_values(".env")
+        current_url = vals.get("WEB_APP_URL") or vals.get("MINI_APP_URL") or settings.mini_app_url
+        if current_url and current_url.startswith("https://"):
+            from aiogram.types import MenuButtonWebApp, WebAppInfo
+            await bot.set_chat_menu_button(
+                menu_button=MenuButtonWebApp(
+                    text="📺 Mini App",
+                    web_app=WebAppInfo(url=current_url),
+                )
+            )
+            logging.info("Chat Menu Button active: %s", current_url)
+    except Exception as e:
+        logging.warning("Could not refresh chat menu button: %s", e)
 
 
 async def main() -> None:
@@ -99,16 +133,7 @@ async def main() -> None:
         logging.warning("Initial delete_webhook failed (will retry in polling): %s", e)
 
     # Configure Chat Menu Button to open Mini App directly
-    try:
-        from aiogram.types import MenuButtonWebApp, WebAppInfo
-        await bot.set_chat_menu_button(
-            menu_button=MenuButtonWebApp(
-                text="📺 Mini App",
-                web_app=WebAppInfo(url=settings.mini_app_url),
-            )
-        )
-    except Exception as e:
-        logging.info("Could not set chat menu button: %s", e)
+    await refresh_menu_button(bot)
 
     import uvicorn
     from web_api import app as api_app
@@ -130,6 +155,7 @@ async def main() -> None:
         while True:
             try:
                 sanitize_no_proxy()
+                await refresh_menu_button(bot)
                 current_proxy = get_current_proxy()
                 logging.info("Starting Telegram polling (proxy=%s)…", mask_proxy(current_proxy))
                 await dp.start_polling(bot)
