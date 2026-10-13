@@ -78,17 +78,51 @@ def start_pinggy_tunnel():
 
 
 def start_ngrok_tunnel():
-    """Starts Ngrok tunnel if installed."""
+    """Starts Ngrok tunnel and saves public HTTPS URL to .env."""
     ngrok_bin = shutil.which("ngrok")
     if not ngrok_bin:
         print("❌ 'ngrok' binary not found.")
         return False
 
-    cmd = [ngrok_bin, "http", str(PORT)]
+    authtoken = os.getenv("NGROK_AUTHTOKEN")
+    if authtoken:
+        subprocess.run([ngrok_bin, "config", "add-authtoken", authtoken], check=False)
+
+    cmd = [ngrok_bin, "http", str(PORT), "--log=stdout"]
     print(f"🚀 Starting Ngrok tunnel to localhost:{PORT}…")
-    proc = subprocess.Popen(cmd)
-    proc.wait()
-    return True
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+    https_url = None
+    import json
+    import urllib.request
+
+    # Wait for Ngrok API on port 4040
+    for _ in range(25):
+        time.sleep(1)
+        try:
+            req = urllib.request.Request("http://127.0.0.1:4040/api/tunnels")
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                data = json.loads(resp.read().decode())
+                for t in data.get("tunnels", []):
+                    url = t.get("public_url")
+                    if url and url.startswith("https://"):
+                        https_url = url
+                        break
+                if https_url:
+                    break
+        except Exception:
+            pass
+
+    if https_url:
+        print("\n" + "=" * 50)
+        print(f"🎉 NGROK PUBLIC HTTPS URL: {https_url}")
+        print("=" * 50 + "\n")
+        update_env_file("WEB_APP_URL", https_url)
+        update_env_file("MINI_APP_URL", https_url)
+        proc.wait()
+        return True
+
+    return False
 
 
 if __name__ == "__main__":
