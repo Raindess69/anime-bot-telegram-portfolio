@@ -559,11 +559,17 @@
           Выберите серию из списка ниже или откройте просмотр в один клик:
         </p>
         <div class="grid grid-cols-2 gap-2 text-xs font-semibold">
-          <a id="btn-watch-anilibria" href="#" target="_blank" class="py-2.5 px-3 rounded-xl bg-violet-600/25 hover:bg-violet-600 border border-violet-500/30 text-violet-200 hover:text-white flex items-center justify-center gap-1.5 transition">
+          <a id="btn-watch-anilibria" href="#" target="_blank" onclick="openSourceUrl(event, this.href)" class="py-2.5 px-3 rounded-xl bg-violet-600/25 hover:bg-violet-600 border border-violet-500/30 text-violet-200 hover:text-white flex items-center justify-center gap-1.5 transition hidden">
             🎙️ AniLibria
           </a>
-          <a id="btn-watch-shikimori" href="#" target="_blank" class="py-2.5 px-3 rounded-xl bg-indigo-600/25 hover:bg-indigo-600 border border-indigo-500/30 text-indigo-200 hover:text-white flex items-center justify-center gap-1.5 transition">
+          <a id="btn-watch-shikimori" href="#" target="_blank" onclick="openSourceUrl(event, this.href)" class="py-2.5 px-3 rounded-xl bg-indigo-600/25 hover:bg-indigo-600 border border-indigo-500/30 text-indigo-200 hover:text-white flex items-center justify-center gap-1.5 transition">
             ⭐ Shikimori
+          </a>
+          <a id="btn-watch-yummy" href="#" target="_blank" onclick="openSourceUrl(event, this.href)" class="py-2.5 px-3 rounded-xl bg-pink-600/25 hover:bg-pink-600 border border-pink-500/30 text-pink-200 hover:text-white flex items-center justify-center gap-1.5 transition">
+            🍿 YummyAnime
+          </a>
+          <a id="btn-watch-animego" href="#" target="_blank" onclick="openSourceUrl(event, this.href)" class="py-2.5 px-3 rounded-xl bg-emerald-600/25 hover:bg-emerald-600 border border-emerald-500/30 text-emerald-200 hover:text-white flex items-center justify-center gap-1.5 transition">
+            ⚡ AnimeGO
           </a>
         </div>
       </div>
@@ -1008,29 +1014,50 @@
         // Setup direct watch buttons
         const btnAnilibria = document.getElementById('btn-watch-anilibria');
         const btnShiki = document.getElementById('btn-watch-shikimori');
+        const btnYummy = document.getElementById('btn-watch-yummy');
+        const btnAnimego = document.getElementById('btn-watch-animego');
+        const qSearch = encodeURIComponent(data.title_ru || data.title_en || '');
+
         if (data.sources && data.sources.shikimori) {
           btnShiki.href = data.sources.shikimori;
           btnShiki.classList.remove('hidden');
         } else {
           btnShiki.href = `https://shikimori.one/animes/${animeId}`;
+          btnShiki.classList.remove('hidden');
         }
+
         if (data.sources && data.sources.anilibria) {
           btnAnilibria.href = data.sources.anilibria;
           btnAnilibria.classList.remove('hidden');
         } else {
-          btnAnilibria.href = `https://anilibria.top/anime/releases/release`;
+          btnAnilibria.href = '#';
+          btnAnilibria.classList.add('hidden');
+        }
+
+        if (btnYummy) {
+          btnYummy.href = (data.sources && data.sources.yummy) || `https://yummyanime.tv/search?q=${qSearch}`;
+          btnYummy.classList.remove('hidden');
+        }
+        if (btnAnimego) {
+          btnAnimego.href = (data.sources && data.sources.animego) || `https://animego.org/search/anime?q=${qSearch}`;
+          btnAnimego.classList.remove('hidden');
         }
 
         // Setup Player
         const playerContainer = document.getElementById('player-container');
         const fallbackCard = document.getElementById('player-fallback-card');
         const voiceWrapper = document.getElementById('voice-wrapper');
+        const heroWatchText = document.getElementById('modal-hero-watch-text');
+        const playerBadge = document.getElementById('player-status-badge');
+        const fallbackText = document.getElementById('player-fallback-text');
 
         if (data.kodik && data.kodik.url) {
           playerContainer.classList.remove('hidden');
           fallbackCard.classList.add('hidden');
           playVideo(data.kodik.url);
           document.getElementById('player-voice').textContent = data.kodik.translation || 'Стандартная';
+          if (playerBadge) playerBadge.textContent = data.kodik.type === 'hls' ? 'HLS Плеер' : 'Онлайн';
+          if (heroWatchText) heroWatchText.textContent = 'Смотреть 1 серию';
 
           if (data.kodik.translations && data.kodik.translations.length > 1) {
             voiceWrapper.classList.remove('hidden');
@@ -1051,6 +1078,11 @@
           playerContainer.classList.add('hidden');
           fallbackCard.classList.remove('hidden');
           voiceWrapper.classList.add('hidden');
+          if (playerBadge) playerBadge.textContent = 'Внешние плееры';
+          if (heroWatchText) heroWatchText.textContent = 'Выбрать плеер онлайн 🎬';
+          if (fallbackText) {
+            fallbackText.textContent = 'Прямой HLS-поток в приложении недоступен для этого тайтла (лицензирован или отсутствует в открытом каталоге). Выберите удобный источник для онлайн просмотра:';
+          }
         }
 
         // Always render episode buttons!
@@ -1185,9 +1217,27 @@
       const playerContainer = document.getElementById('player-container');
       if (playerContainer && !playerContainer.classList.contains('hidden')) {
         playerContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const video = document.getElementById('hls-video');
+        if (video && !video.classList.contains('hidden') && video.paused) {
+          video.play().catch(() => {});
+        }
       } else {
         const fallback = document.getElementById('player-fallback-card');
         if (fallback) fallback.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+
+    function openSourceUrl(e, url) {
+      if (e) e.preventDefault();
+      if (!url || url === '#' || url.endsWith('/releases/release')) {
+        showToast('Источник недоступен');
+        return;
+      }
+      haptic();
+      if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openLink) {
+        window.Telegram.WebApp.openLink(url);
+      } else {
+        window.open(url, '_blank', 'noopener,noreferrer');
       }
     }
 
@@ -1251,12 +1301,15 @@
       currentPlayingEpisode = epNum;
       if (url) {
         playVideo(url);
+        showToast(`Включена ${epNum} серия 🎬`);
+        document.getElementById('modal-hero-watch-text').textContent = `Продолжить: ${epNum} серия`;
+      } else {
+        showToast(`Серия ${epNum} выбрана в списке`);
+        scrollToPlayer();
       }
 
       highlightActiveEpisode(epNum);
       document.getElementById('episodes-active-badge').textContent = `Серия ${epNum}`;
-      document.getElementById('modal-hero-watch-text').textContent = `Продолжить: ${epNum} серия`;
-      showToast(`Включена ${epNum} серия 🎬`);
 
       if (currentCard) {
         apiFetch('/api/library/episode', {

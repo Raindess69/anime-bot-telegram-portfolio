@@ -336,12 +336,12 @@ async def _enrich_watch_links(cards: list[AnimeCard], lang: str) -> None:
         extras = [t for t in (card.title_en, card.title_jp) if t and t != title]
         try:
             release = await anilibria.find_release(title, extra_queries=extras)
-            if release:
+            if release and release.get("code") and release.get("url"):
                 card.anilibria_code = release["code"]
                 card.anilibria_url = release["url"]
-                card.episodes_available = release["episodes"]
+                card.episodes_available = release.get("episodes") or []
                 card.episode_uuids = release.get("episode_ids") or {}
-                card.torrents = release["torrents"]
+                card.torrents = release.get("torrents") or []
         except Exception as e:
             _log.info("Anilibria enrich failed: %s", e)
 

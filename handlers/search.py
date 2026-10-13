@@ -47,7 +47,7 @@ async def build_keyboard(
         nav_row.append(InlineKeyboardButton(text=t("btn_next", lang), callback_data=f"nav:{next_idx}"))
 
     action_row: list[InlineKeyboardButton] = []
-    if card.anilibria_url:
+    if card.anilibria_url and card.anilibria_code:
         action_row.append(InlineKeyboardButton(text=t("btn_anilibria", lang), url=card.anilibria_url))
     if card.anilibria_code and card.episodes_available:
         action_row.append(InlineKeyboardButton(text=t("btn_episodes", lang), callback_data=f"eps:{idx}:0"))
@@ -59,6 +59,10 @@ async def build_keyboard(
     watch_row: list[InlineKeyboardButton] = [
         InlineKeyboardButton(text=t("btn_yummy", lang), url=card.yummy_search_url())
     ]
+    if card.title_ru or card.title_en:
+        import urllib.parse
+        q_title = urllib.parse.quote(card.title_ru or card.title_en)
+        watch_row.append(InlineKeyboardButton(text="⚡ AnimeGO", url=f"https://animego.org/search/anime?q={q_title}"))
     if card.crunchyroll_url:
         watch_row.append(
             InlineKeyboardButton(text=t("btn_crunchyroll", lang), url=card.crunchyroll_url)

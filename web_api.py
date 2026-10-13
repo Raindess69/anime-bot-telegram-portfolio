@@ -303,12 +303,16 @@ async def get_anime_details(
             })
             player_info["anilibria_streams"] = anilibria_info.get("episode_streams")
 
+        import urllib.parse
+        q_search = urllib.parse.quote(title_ru or full.get("title_en") or "")
         sources = {
             "shikimori": f"https://shikimori.one/animes/{anime_id}",
-            "anilibria": anilibria_info.get("url") if anilibria_info else None,
+            "anilibria": (anilibria_info.get("url") if anilibria_info and anilibria_info.get("code") else None),
             "anilibria_episodes": anilibria_info.get("episodes") if anilibria_info else [],
             "anilibria_streams": anilibria_info.get("episode_streams") if anilibria_info else {},
             "anilibria_code": anilibria_info.get("code") if anilibria_info else None,
+            "yummy": f"https://yummyanime.tv/search?q={q_search}",
+            "animego": f"https://animego.org/search/anime?q={q_search}",
         }
 
         full["kodik"] = player_info

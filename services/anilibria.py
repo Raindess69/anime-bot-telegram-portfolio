@@ -3,8 +3,8 @@ from difflib import SequenceMatcher
 
 import httpx
 
-BASE_URL = "https://anilibria.top/api/v1"
-SITE_URL = "https://anilibria.top"
+BASE_URL = "https://aniliberty.top/api/v1"
+SITE_URL = "https://aniliberty.top"
 _TIMEOUT = httpx.Timeout(8.0, connect=5.0)
 _SEARCH_LIMIT = 5
 # Anilibria's fuzzy search happily returns tangentially-related hits. We compare
@@ -17,13 +17,17 @@ _MIN_SIMILARITY = 0.75
 _log = logging.getLogger(__name__)
 
 
-def release_url(alias: str) -> str:
+def release_url(alias: str | None) -> str | None:
+    if not alias:
+        return None
     return f"{SITE_URL}/anime/releases/release/{alias}"
 
 
-def episode_url(alias: str, uuid: str | None = None) -> str:
+def episode_url(alias: str | None, uuid: str | None = None) -> str | None:
     if uuid:
         return f"{SITE_URL}/anime/video/episode/{uuid}"
+    if not alias:
+        return None
     return f"{SITE_URL}/anime/releases/release/{alias}/episodes"
 
 
