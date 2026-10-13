@@ -197,9 +197,9 @@ def _parse_full(raw: dict) -> dict:
 
 def _image_url(raw: dict) -> str | None:
     image = raw.get("image") or {}
-    original = image.get("original")
-    if not original:
-        return None
-    if original.startswith("http"):
-        return original
-    return f"https://shikimori.one{original}"
+    url = image.get("original") or image.get("preview")
+    if not url:
+        return "https://shikimori.io/assets/globals/missing_original.jpg"
+    if url.startswith("http"):
+        return url
+    return f"https://shikimori.io{url}"

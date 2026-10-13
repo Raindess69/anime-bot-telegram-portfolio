@@ -81,6 +81,42 @@ async def search_anime(q: str = Query(..., min_length=1), lang: str = "ru"):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/vibe")
+async def get_vibe(
+    genre: Optional[str] = None,
+    min_score: Optional[float] = None,
+    year_from: Optional[int] = None,
+    year_to: Optional[int] = None,
+    type_: Optional[str] = None,
+    limit: int = 10,
+):
+    """Vibe filter search (genre, score, years, type)."""
+    try:
+        results, relaxed = await aggregator.vibe_search(
+            min_score=min_score,
+            year_from=year_from,
+            year_to=year_to,
+            genre_slug=genre,
+            type_=type_,
+            limit=limit,
+        )
+        return {"results": results, "relaxed": relaxed}
+    except Exception as e:
+        _log.exception("Vibe error: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/random")
+async def get_random():
+    """Roll a high-rated random anime."""
+    try:
+        res = await aggregator.random_anime()
+        return res or {}
+    except Exception as e:
+        _log.exception("Random error: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/anime/{anime_id}")
 async def get_anime_details(anime_id: int, lang: str = "ru"):
     """Get rich title info with embedded Kodik player & episodes."""
