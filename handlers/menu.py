@@ -1,10 +1,11 @@
 """Persistent-menu router: reply keyboard + vibe/top wizards + random + subs/help."""
 import logging
+import random
 from datetime import date
 
 from aiogram import F, Router
 from aiogram.enums import ParseMode
-from aiogram.filters import StateFilter
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
@@ -42,7 +43,7 @@ class VibeStates(StatesGroup):
 # --- Reply keyboard -----------------------------------------------------------
 
 _MENU_KEYS = (
-    "menu_search", "menu_vibe", "menu_top", "menu_random",
+    "menu_search", "menu_vibe", "menu_mylist", "menu_top", "menu_random",
     "menu_subs", "menu_history", "menu_help", "menu_donate",
 )
 
@@ -65,13 +66,12 @@ ALL_MENU_TEXTS = _all_menu_texts()
 
 def main_menu_keyboard(lang: str) -> ReplyKeyboardMarkup:
     labels = _menu_texts(lang)
-    # 2×4 layout — donate lives on the last row next to help so it's always
+    # 3×3 layout — donate lives on the last row next to help so it's always
     # visible but never in the "hot spot" where accidental taps happen.
     rows = [
-        [KeyboardButton(text=labels["menu_search"]), KeyboardButton(text=labels["menu_vibe"])],
-        [KeyboardButton(text=labels["menu_top"]), KeyboardButton(text=labels["menu_random"])],
-        [KeyboardButton(text=labels["menu_subs"]), KeyboardButton(text=labels["menu_history"])],
-        [KeyboardButton(text=labels["menu_help"]), KeyboardButton(text=labels["menu_donate"])],
+        [KeyboardButton(text=labels["menu_search"]), KeyboardButton(text=labels["menu_vibe"]), KeyboardButton(text=labels["menu_mylist"])],
+        [KeyboardButton(text=labels["menu_top"]), KeyboardButton(text=labels["menu_random"]), KeyboardButton(text=labels["menu_subs"])],
+        [KeyboardButton(text=labels["menu_history"]), KeyboardButton(text=labels["menu_help"]), KeyboardButton(text=labels["menu_donate"])],
     ]
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True, is_persistent=True)
 
@@ -95,15 +95,29 @@ def _list_keyboard(count: int, lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def _episode_progress(card: AnimeCard) -> str | None:
+    """"released/total" episode count (e.g. "3/13") from whichever watch source
+    got enriched — this is real availability, not MAL's often-null `episodes`
+    field for still-airing titles."""
+    available = len(card.episodes_available) or len(card.kodik_episodes)
+    if not available:
+        return None
+    return f"{available}/{card.episodes}" if card.episodes else f"{available}/?"
+
+
 def _format_list(cards: list[AnimeCard], lang: str, header: str) -> str:
     lines = [t("list_header", lang, title=header)]
     for i, card in enumerate(cards, 1):
         title = card.primary_title(lang)
         score = f"{card.score:.2f}" if card.score is not None else t("unknown", lang)
         if card.year:
-            lines.append(t("list_item", lang, n=i, title=title, score=score, year=card.year))
+            line = t("list_item", lang, n=i, title=title, score=score, year=card.year)
         else:
-            lines.append(t("list_item_no_year", lang, n=i, title=title, score=score))
+            line = t("list_item_no_year", lang, n=i, title=title, score=score)
+        progress = _episode_progress(card)
+        if progress:
+            line += f" · {progress}"
+        lines.append(line)
     return "\n".join(lines)
 
 
@@ -138,6 +152,9 @@ async def on_menu_text(message: Message, state: FSMContext) -> None:
     if _match(message, lang, "menu_vibe"):
         await _start_vibe(message, lang, state)
         return
+    if _match(message, lang, "menu_mylist"):
+        await _do_mylist(message, lang)
+        return
     if _match(message, lang, "menu_top"):
         await message.answer(t("top_intro", lang), parse_mode=ParseMode.HTML, reply_markup=_top_keyboard(lang))
         return
@@ -160,6 +177,17 @@ async def on_menu_text(message: Message, state: FSMContext) -> None:
         return
 
 
+@router.message(F.text & ~F.text.startswith("/"), StateFilter(VibeStates))
+async def on_vibe_stray_text(message: Message, state: FSMContext) -> None:
+    """User typed instead of tapping a vibe-wizard button. Registered after
+    on_menu_text so menu buttons still short-circuit here first. Cancels the
+    wizard (its inline buttons go stale but harmless) and treats the text as
+    a normal search instead of silently swallowing it."""
+    await state.clear()
+    from .search import text_search
+    await text_search(message)
+
+
 # --- Random -------------------------------------------------------------------
 
 async def _do_random(message: Message, lang: str) -> None:
@@ -180,6 +208,72 @@ async def _do_random(message: Message, lang: str) -> None:
     await aggregator._enrich_watch_links([card], lang)
     await _cache_list([card], lang, "random")
     await send_result(message, [card], 0, lang, user_id=message.from_user.id)
+
+
+@router.message(Command("planrandom"))
+async def cmd_plan_random(message: Message) -> None:
+    """Picks a random title from the user's "plan to watch" tracking list and
+    shows it as a normal result card, re-fetched fresh from Jikan (the tracked
+    row only stores mal_id/title, not the full card data)."""
+    lang = await get_lang(message.from_user.id)
+    from db import user_titles
+
+    plan_list = await user_titles.list_by_status(message.from_user.id, "plan")
+    if not plan_list:
+        await message.answer(t("planrandom_empty", lang), parse_mode=ParseMode.HTML)
+        return
+
+    pick = random.choice(plan_list)
+    status = await message.answer(t("random_searching", lang))
+    try:
+        raw = await jikan.get_by_id(pick["mal_id"])
+    except Exception as e:
+        _log.exception("planrandom jikan lookup crashed: %s", e)
+        raw = None
+    try:
+        await status.delete()
+    except Exception:
+        pass
+    if not raw:
+        await message.answer(t("random_failed", lang))
+        return
+
+    card = AnimeCard(**{k: v for k, v in raw.items() if v is not None})
+    await aggregator._enrich_watch_links([card], lang)
+    await _cache_list([card], lang, "planrandom")
+    await send_result(message, [card], 0, lang, user_id=message.from_user.id)
+
+
+# --- My list (tracker browser) -------------------------------------------------
+# The actual tab list rendering / stats / open-card handlers live in
+# handlers/mylist.py (separate router) — this is just the entry picker.
+
+def _mylist_home_keyboard(lang: str) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text=t("status_watching", lang), callback_data="mylist:cat:watching:0")],
+        [InlineKeyboardButton(text=t("status_plan", lang), callback_data="mylist:cat:plan:0")],
+        [InlineKeyboardButton(text=t("status_completed", lang), callback_data="mylist:cat:completed:0")],
+        [InlineKeyboardButton(text=t("status_dropped", lang), callback_data="mylist:cat:dropped:0")],
+        [InlineKeyboardButton(text=t("mylist_cat_fav", lang), callback_data="mylist:fav:0")],
+        [InlineKeyboardButton(text=t("mylist_cat_stats", lang), callback_data="mylist:stats")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _do_mylist(message: Message, lang: str) -> None:
+    await message.answer(t("mylist_intro", lang), parse_mode=ParseMode.HTML, reply_markup=_mylist_home_keyboard(lang))
+
+
+@router.callback_query(F.data == "mylist:home")
+async def cb_mylist_home(call: CallbackQuery) -> None:
+    lang = await get_lang(call.from_user.id)
+    try:
+        await call.message.edit_text(
+            t("mylist_intro", lang), parse_mode=ParseMode.HTML, reply_markup=_mylist_home_keyboard(lang)
+        )
+    except Exception as e:
+        _log.info("mylist:home edit failed: %s", e)
+    await call.answer()
 
 
 # --- Subs & help --------------------------------------------------------------

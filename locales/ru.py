@@ -93,6 +93,26 @@ STRINGS = {
     "sub_not_available": "Подписка недоступна — не смог опознать тайтл на MAL.",
     "cmd_subs_header": "🔔 <b>Твои подписки:</b>",
     "cmd_subs_empty": "У тебя нет подписок. Открой карточку любого аниме и нажми 🔔 Подписаться.",
+
+    # --- Title tracking (status / favorites / progress) ---
+    "status_track": "📌 Отслеживать",
+    "status_watching": "👁 Смотрю",
+    "status_completed": "✅ Просмотрено",
+    "status_plan": "🕒 В планах",
+    "status_dropped": "🗑 Брошено",
+    "btn_favorite_on": "★ В избранном",
+    "btn_favorite_off": "☆ В избранное",
+    "btn_mark_watched": "✅ Посмотрел(а)",
+    "fav_added": "Добавлено в избранное",
+    "fav_removed": "Убрано из избранного",
+    "progress_saved": "Отмечено: серия {ep}",
+
+    # --- JSON backup export ---
+    "export_caption": "Бэкап: {count} тайтлов",
+    "export_empty": "Список отслеживания пуст — нечего экспортировать",
+
+    # --- Plan-to-watch random ---
+    "planrandom_empty": "В планах пока пусто. Добавьте что-нибудь через кнопку «В планах» на карточке тайтла",
     "new_episode_notification": (
         "🎬 <b>{title}</b>\n"
         "Вышла <b>серия {episode}</b>! 🎉"
@@ -207,4 +227,37 @@ STRINGS = {
     "history_clear": "🗑 Очистить историю",
     "history_cleared": "🗑 История очищена.",
     "history_reopening": "🔍 Повторяю: {query}",
+
+    # --- Persistent menu: My List ---
+    "menu_mylist": "📋 Мой список",
+
+    # --- My List picker/list view ---
+    "mylist_intro": "📋 <b>Мой список</b>\nВыберите раздел:",
+    "mylist_cat_fav": "★ Избранное",
+    "mylist_cat_stats": "📊 Статистика",
+    "mylist_header": "<b>{category}</b>",
+    "mylist_empty": "Здесь пока пусто",
+    "mylist_item": "{n}. {title} (эп. {ep})",
+    "mylist_item_no_progress": "{n}. {title}",
+    "mylist_stats_text": (
+        "📊 <b>Статистика</b>\n\n"
+        "👁 Смотрю: {watching}\n"
+        "✅ Просмотрено: {completed}\n"
+        "🕒 В планах: {plan}\n"
+        "🗑 Брошено: {dropped}\n"
+        "★ Избранное: {favorites}\n\n"
+        "Всего просмотрено серий: {episodes}"
+    ),
+
+    # --- /import backup restore ---
+    "import_prompt": "Прикрепите файл бэкапа (JSON, полученный через /export) к этой команде — отправьте файл с подписью /import, либо ответьте на сообщение с файлом командой /import",
+    "import_no_file": "Файл не найден. Прикрепите JSON-бэкап или ответьте на сообщение с ним",
+    "import_bad_format": "Не удалось прочитать файл — это не похоже на бэкап от /export",
+    "import_done": "Восстановлено тайтлов: {count}",
+
+    # --- Similar anime recommendations ---
+    "btn_similar": "🔀 Похожее",
+    "similar_header": "Похоже на «{title}»:",
+    "similar_empty": "Рекомендаций не нашлось",
+    "similar_fetching": "Ищу похожее…",
 }

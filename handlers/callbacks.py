@@ -2,12 +2,13 @@ import logging
 
 from aiogram import Router
 from aiogram.enums import ParseMode
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
-from db import get_lang
+from db import get_lang, user_titles
 from db.subscriptions import is_subscribed, subscribe, unsubscribe, list_subscriptions
 from locales import t
 from services import anilibria as anilibria_service
+from services import jikan
 from services.aggregator import search_cache
 
 from .search import build_keyboard, edit_result
@@ -139,6 +140,228 @@ async def cb_episodes(call: CallbackQuery) -> None:
         except Exception as e:
             _log.info("edit_text for episodes failed: %s", e)
     await call.answer()
+
+
+def _torrents_keyboard(
+    card_idx: int,
+    torrents: list[dict],
+    page: int,
+    lang: str,
+) -> InlineKeyboardMarkup:
+    total_pages = max(1, (len(torrents) + _EPISODES_PER_PAGE - 1) // _EPISODES_PER_PAGE)
+    page = max(0, min(page, total_pages - 1))
+    start = page * _EPISODES_PER_PAGE
+    chunk = torrents[start : start + _EPISODES_PER_PAGE]
+
+    rows: list[list[InlineKeyboardButton]] = []
+    for tr in chunk:
+        if tr.get("size_gb") is not None:
+            label = t(
+                "download_button", lang,
+                quality=tr.get("quality") or "?",
+                size=t("size_gb", lang, value=tr["size_gb"]),
+                episodes=tr.get("episodes") or "",
+            )
+        else:
+            label = t(
+                "download_button_no_size", lang,
+                quality=tr.get("quality") or "?",
+                episodes=tr.get("episodes") or "",
+            )
+        rows.append([InlineKeyboardButton(text=label, callback_data=f"trdl:{card_idx}:{tr['id']}")])
+
+    if total_pages > 1:
+        prev_page = (page - 1) % total_pages
+        next_page = (page + 1) % total_pages
+        rows.append([
+            InlineKeyboardButton(text="◀", callback_data=f"trlist:{card_idx}:{prev_page}"),
+            InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="noop"),
+            InlineKeyboardButton(text="▶", callback_data=f"trlist:{card_idx}:{next_page}"),
+        ])
+
+    rows.append([InlineKeyboardButton(text=t("btn_back", lang), callback_data=f"nav:{card_idx}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("trlist:"))
+async def cb_torrents_list(call: CallbackQuery) -> None:
+    parts = call.data.split(":")
+    if len(parts) != 3:
+        await call.answer()
+        return
+    try:
+        idx = int(parts[1])
+        page = int(parts[2])
+    except ValueError:
+        await call.answer()
+        return
+
+    lang = await get_lang(call.from_user.id)
+    cards = await _find_cards_for_message(call.from_user.id, call.message.message_id if call.message else 0)
+    if not cards or idx >= len(cards):
+        await call.answer(t("api_error", lang), show_alert=False)
+        return
+
+    card = cards[idx]
+    if not card.torrents:
+        await call.answer(t("no_torrents", lang), show_alert=True)
+        return
+
+    kb = _torrents_keyboard(idx, card.torrents, page, lang)
+    text = t("download_header", lang, title=card.primary_title(lang))
+
+    if call.message.photo:
+        try:
+            await call.message.edit_caption(caption=text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        except Exception as e:
+            _log.info("edit_caption for torrents failed: %s", e)
+    else:
+        try:
+            await call.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        except Exception as e:
+            _log.info("edit_text for torrents failed: %s", e)
+    await call.answer()
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("trdl:"))
+async def cb_torrent_download(call: CallbackQuery) -> None:
+    parts = call.data.split(":")
+    if len(parts) != 3:
+        await call.answer()
+        return
+    try:
+        idx = int(parts[1])
+        tid = int(parts[2])
+    except ValueError:
+        await call.answer()
+        return
+
+    lang = await get_lang(call.from_user.id)
+    cards = await _find_cards_for_message(call.from_user.id, call.message.message_id if call.message else 0)
+    if not cards or idx >= len(cards):
+        await call.answer(t("api_error", lang), show_alert=False)
+        return
+
+    card = cards[idx]
+    tr = next((x for x in card.torrents if x.get("id") == tid), None)
+    if not tr:
+        await call.answer(t("torrent_failed", lang), show_alert=True)
+        return
+
+    await call.answer(t("torrent_fetching", lang))
+    title = card.primary_title(lang)
+    caption = t(
+        "torrent_caption", lang,
+        title=title,
+        quality=tr.get("quality") or "?",
+        episodes=tr.get("episodes") or "",
+    )
+
+    data = await anilibria_service.download_torrent_file(tid)
+    if data:
+        try:
+            await call.message.answer_document(
+                BufferedInputFile(data, filename=f"{title}.torrent"),
+                caption=caption,
+                parse_mode=ParseMode.HTML,
+            )
+            return
+        except Exception as e:
+            _log.info("answer_document for torrent failed: %s", e)
+
+    magnet = tr.get("magnet")
+    if magnet:
+        await call.message.answer(caption, parse_mode=ParseMode.HTML)
+        await call.message.answer(magnet)
+    else:
+        await call.message.answer(t("torrent_failed", lang))
+
+
+def _similar_keyboard(
+    mal_id: int,
+    recs: list[dict],
+    page: int,
+    lang: str,
+    back_idx: int | None,
+) -> InlineKeyboardMarkup:
+    total_pages = max(1, (len(recs) + _EPISODES_PER_PAGE - 1) // _EPISODES_PER_PAGE)
+    page = max(0, min(page, total_pages - 1))
+    start = page * _EPISODES_PER_PAGE
+    chunk = recs[start : start + _EPISODES_PER_PAGE]
+
+    rows: list[list[InlineKeyboardButton]] = []
+    for rec in chunk:
+        rows.append([
+            InlineKeyboardButton(text=(rec.get("title") or str(rec["mal_id"]))[:60], callback_data=f"mlopen:{rec['mal_id']}")
+        ])
+
+    if total_pages > 1:
+        prev_page = (page - 1) % total_pages
+        next_page = (page + 1) % total_pages
+        rows.append([
+            InlineKeyboardButton(text="◀", callback_data=f"similar:{mal_id}:{prev_page}"),
+            InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="noop"),
+            InlineKeyboardButton(text="▶", callback_data=f"similar:{mal_id}:{next_page}"),
+        ])
+
+    if back_idx is not None:
+        rows.append([InlineKeyboardButton(text=t("btn_back", lang), callback_data=f"nav:{back_idx}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("similar:"))
+async def cb_similar(call: CallbackQuery) -> None:
+    parts = call.data.split(":")
+    if len(parts) != 3:
+        await call.answer()
+        return
+    try:
+        mal_id = int(parts[1])
+        page = int(parts[2])
+    except ValueError:
+        await call.answer()
+        return
+
+    await call.answer()
+    lang = await get_lang(call.from_user.id)
+    cards = await _find_cards_for_message(call.from_user.id, call.message.message_id if call.message else 0)
+    idx, card = _find_card_by_mal(cards, mal_id)
+    title = card.primary_title(lang) if card else str(mal_id)
+
+    recs = await jikan.get_recommendations(mal_id)
+
+    if not recs:
+        text = t("similar_empty", lang)
+        kb = None
+        if idx is not None:
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=t("btn_back", lang), callback_data=f"nav:{idx}")]
+            ])
+        if call.message.photo:
+            try:
+                await call.message.edit_caption(caption=text, parse_mode=ParseMode.HTML, reply_markup=kb)
+            except Exception as e:
+                _log.info("edit_caption for similar (empty) failed: %s", e)
+        else:
+            try:
+                await call.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+            except Exception as e:
+                _log.info("edit_text for similar (empty) failed: %s", e)
+        return
+
+    kb = _similar_keyboard(mal_id, recs, page, lang, idx)
+    text = t("similar_header", lang, title=title)
+
+    if call.message.photo:
+        try:
+            await call.message.edit_caption(caption=text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        except Exception as e:
+            _log.info("edit_caption for similar failed: %s", e)
+    else:
+        try:
+            await call.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        except Exception as e:
+            _log.info("edit_text for similar failed: %s", e)
 
 
 def _kodik_episodes_keyboard(
@@ -307,6 +530,64 @@ async def cb_unsubscribe_by_id(call: CallbackQuery) -> None:
         except Exception as e:
             _log.info("edit /subs empty failed: %s", e)
     await call.answer(t("sub_removed_short", lang), show_alert=False)
+
+
+def _find_card_by_mal(cards: list | None, mal_id: int):
+    if not cards:
+        return None, None
+    for i, c in enumerate(cards):
+        if c.mal_id == mal_id:
+            return i, c
+    return None, None
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("ut:"))
+async def cb_user_title(call: CallbackQuery) -> None:
+    """Status cycle / favorite toggle / episode-progress mark. callback_data is
+    keyed by mal_id (not the search-cache idx), so it keeps working even after
+    the cache entry backing the current card list expires — only the keyboard
+    refresh (which needs the cached card list) degrades gracefully in that case."""
+    parts = call.data.split(":")
+    if len(parts) < 3:
+        await call.answer()
+        return
+    try:
+        mal_id = int(parts[1])
+    except ValueError:
+        await call.answer()
+        return
+    action = parts[2]
+
+    lang = await get_lang(call.from_user.id)
+    user_id = call.from_user.id
+    cards = await _find_cards_for_message(user_id, call.message.message_id if call.message else 0)
+    idx, card = _find_card_by_mal(cards, mal_id)
+    title = card.primary_title(lang) if card else str(mal_id)
+
+    if action == "st":
+        new_status = await user_titles.cycle_status(user_id, mal_id, title, lang)
+        await call.answer(t(f"status_{new_status}", lang), show_alert=False)
+    elif action == "fav":
+        is_fav = await user_titles.toggle_favorite(user_id, mal_id, title, lang)
+        await call.answer(t("fav_added" if is_fav else "fav_removed", lang), show_alert=False)
+    elif action == "ep" and len(parts) == 4:
+        try:
+            ep = int(parts[3])
+        except ValueError:
+            await call.answer()
+            return
+        await user_titles.set_episode(user_id, mal_id, title, lang, ep)
+        await call.answer(t("progress_saved", lang, ep=ep), show_alert=False)
+    else:
+        await call.answer()
+        return
+
+    if cards is not None and idx is not None:
+        kb = await build_keyboard(cards, idx, lang, user_id=user_id)
+        try:
+            await call.message.edit_reply_markup(reply_markup=kb)
+        except Exception as e:
+            _log.info("edit_reply_markup after ut toggle failed: %s", e)
 
 
 def subs_keyboard(subs: list[dict], lang: str) -> InlineKeyboardMarkup:

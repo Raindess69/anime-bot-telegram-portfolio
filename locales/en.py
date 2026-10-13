@@ -93,6 +93,26 @@ STRINGS = {
     "sub_not_available": "Subscription unavailable — couldn't identify this title on MAL.",
     "cmd_subs_header": "🔔 <b>Your subscriptions:</b>",
     "cmd_subs_empty": "You have no subscriptions. Open any anime card and press 🔔 Subscribe.",
+
+    # --- Title tracking (status / favorites / progress) ---
+    "status_track": "📌 Track",
+    "status_watching": "👁 Watching",
+    "status_completed": "✅ Completed",
+    "status_plan": "🕒 Plan to watch",
+    "status_dropped": "🗑 Dropped",
+    "btn_favorite_on": "★ In favourites",
+    "btn_favorite_off": "☆ Add to favourites",
+    "btn_mark_watched": "✅ Watched it",
+    "fav_added": "Added to favourites",
+    "fav_removed": "Removed from favourites",
+    "progress_saved": "Marked: episode {ep}",
+
+    # --- JSON backup export ---
+    "export_caption": "Backup: {count} titles",
+    "export_empty": "Your tracking list is empty — nothing to export",
+
+    # --- Plan-to-watch random ---
+    "planrandom_empty": "Your plan-to-watch list is empty. Add something with the 🕒 Plan to watch button on a title card",
     "new_episode_notification": (
         "🎬 <b>{title}</b>\n"
         "<b>Episode {episode}</b> is out! 🎉"
@@ -207,4 +227,37 @@ STRINGS = {
     "history_clear": "🗑 Clear history",
     "history_cleared": "🗑 History cleared.",
     "history_reopening": "🔍 Repeating: {query}",
+
+    # --- Persistent menu: My List ---
+    "menu_mylist": "📋 My List",
+
+    # --- My List picker/list view ---
+    "mylist_intro": "📋 <b>My List</b>\nPick a section:",
+    "mylist_cat_fav": "★ Favourites",
+    "mylist_cat_stats": "📊 Stats",
+    "mylist_header": "<b>{category}</b>",
+    "mylist_empty": "Nothing here yet",
+    "mylist_item": "{n}. {title} (ep. {ep})",
+    "mylist_item_no_progress": "{n}. {title}",
+    "mylist_stats_text": (
+        "📊 <b>Stats</b>\n\n"
+        "👁 Watching: {watching}\n"
+        "✅ Completed: {completed}\n"
+        "🕒 Plan to watch: {plan}\n"
+        "🗑 Dropped: {dropped}\n"
+        "★ Favourites: {favorites}\n\n"
+        "Total episodes watched: {episodes}"
+    ),
+
+    # --- /import backup restore ---
+    "import_prompt": "Attach the backup file (JSON from /export) to this command — send the file with caption /import, or reply to the message with the file using /import",
+    "import_no_file": "No file found. Attach a JSON backup or reply to the message with it",
+    "import_bad_format": "Couldn't read the file — it doesn't look like an /export backup",
+    "import_done": "Restored titles: {count}",
+
+    # --- Similar anime recommendations ---
+    "btn_similar": "🔀 Similar",
+    "similar_header": "Similar to «{title}»:",
+    "similar_empty": "No recommendations found",
+    "similar_fetching": "Looking for similar titles…",
 }

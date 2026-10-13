@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     # Optional: register a partner token at https://kodik.cc/. Without it,
     # scheduler simply skips the Kodik source instead of crashing.
     kodik_token: str = Field("", alias="KODIK_TOKEN")
+    # Optional: comma-separated proxy pool for Jikan requests (host:port:user:pass,
+    # or already-full URLs). Without it, requests go out directly as before.
+    jikan_proxies: str = Field("", alias="JIKAN_PROXIES")
 
 
 settings = Settings()

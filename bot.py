@@ -9,12 +9,14 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import settings
 from db import init_db
 from handlers import (
+    backup_router,
     callbacks_router,
     commands_router,
     donate_router,
     history_router,
     inline_router,
     menu_router,
+    mylist_router,
     search_router,
 )
 from services import run_periodic_check
@@ -39,8 +41,10 @@ async def main() -> None:
     # swallow menu button texts.
     dp.include_router(commands_router)
     dp.include_router(donate_router)
+    dp.include_router(backup_router)
     dp.include_router(history_router)
     dp.include_router(menu_router)
+    dp.include_router(mylist_router)
     dp.include_router(callbacks_router)
     dp.include_router(inline_router)
     dp.include_router(search_router)

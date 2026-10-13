@@ -115,6 +115,93 @@ query ($perPage: Int, $sort: [MediaSort], $status: MediaStatus, $format: MediaFo
 }
 """
 
+_BY_MAL_QUERY = """
+query ($id: Int) {
+  Media(idMal: $id, type: ANIME) {
+    idMal
+    title { romaji english native }
+    averageScore
+    episodes
+    status
+    genres
+    startDate { year }
+    description(asHtml: false)
+    coverImage { extraLarge large }
+    siteUrl
+  }
+}
+"""
+
+_RECS_QUERY = """
+query ($id: Int, $perPage: Int) {
+  Media(idMal: $id, type: ANIME) {
+    recommendations(perPage: $perPage, sort: RATING_DESC) {
+      nodes {
+        mediaRecommendation {
+          idMal
+          title { romaji english native }
+          coverImage { large }
+          siteUrl
+        }
+      }
+    }
+  }
+}
+"""
+
+
+async def get_by_mal(mal_id: int) -> dict | None:
+    if not mal_id:
+        return None
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        try:
+            resp = await client.post(
+                BASE_URL,
+                json={"query": _BY_MAL_QUERY, "variables": {"id": mal_id}},
+            )
+            resp.raise_for_status()
+        except (httpx.HTTPError, httpx.TimeoutException) as e:
+            _log.info("AniList get_by_mal failed for mal_id=%s: %s", mal_id, e)
+            return None
+        data = resp.json()
+    media = ((data.get("data") or {}).get("Media")) or {}
+    if not media:
+        return None
+    return _parse(media)
+
+
+async def get_recommendations(mal_id: int, limit: int = 10) -> list[dict]:
+    if not mal_id:
+        return []
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        try:
+            resp = await client.post(
+                BASE_URL,
+                json={"query": _RECS_QUERY, "variables": {"id": mal_id, "perPage": limit}},
+            )
+            resp.raise_for_status()
+        except (httpx.HTTPError, httpx.TimeoutException) as e:
+            _log.info("AniList recommendations failed for mal_id=%s: %s", mal_id, e)
+            return []
+        data = resp.json()
+    media = ((data.get("data") or {}).get("Media")) or {}
+    nodes = ((media.get("recommendations") or {}).get("nodes")) or []
+    results: list[dict] = []
+    for node in nodes:
+        rec = node.get("mediaRecommendation") or {}
+        rec_id = rec.get("idMal")
+        if not rec_id:
+            continue
+        title = (rec.get("title") or {}).get("english") or (rec.get("title") or {}).get("romaji")
+        cover = rec.get("coverImage") or {}
+        results.append({
+            "mal_id": rec_id,
+            "title": title,
+            "image_url": cover.get("large"),
+            "mal_url": f"https://myanimelist.net/anime/{rec_id}",
+        })
+    return results[:limit]
+
 
 async def get_cover_by_mal(mal_id: int) -> str | None:
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:

@@ -10,11 +10,12 @@ from aiogram.types import (
     Message,
 )
 
-from db import get_lang
+from db import get_lang, user_titles
 from db.history import add as history_add
 from db.subscriptions import is_subscribed
 from locales import t
 from models import AnimeCard
+from services import anilibria as anilibria_service
 from services import search_anime
 from utils.formatting import format_card
 
@@ -50,6 +51,10 @@ async def build_keyboard(
         action_row.append(InlineKeyboardButton(text=t("btn_anilibria", lang), url=card.anilibria_url))
     if card.anilibria_code and card.episodes_available:
         action_row.append(InlineKeyboardButton(text=t("btn_episodes", lang), callback_data=f"eps:{idx}:0"))
+    if card.torrents:
+        action_row.append(InlineKeyboardButton(text=t("btn_download", lang), callback_data=f"trlist:{idx}:0"))
+    if card.mal_id:
+        action_row.append(InlineKeyboardButton(text=t("btn_similar", lang), callback_data=f"similar:{card.mal_id}:0"))
 
     watch_row: list[InlineKeyboardButton] = [
         InlineKeyboardButton(text=t("btn_yummy", lang), url=card.yummy_search_url())
@@ -88,14 +93,55 @@ async def build_keyboard(
     if card.mal_url:
         meta_row.append(InlineKeyboardButton(text=t("btn_mal", lang), url=card.mal_url))
 
+    # Tracking rows: status cycle + favorite toggle, and (if the user is mid-watch)
+    # a "next episode" pair — url button to actually watch it, callback button to
+    # record it as seen. Can't be one button: Telegram buttons take url OR
+    # callback_data, never both.
+    track_row: list[InlineKeyboardButton] = []
+    progress_row: list[InlineKeyboardButton] = []
+    if card.mal_id and user_id is not None:
+        entry = await user_titles.get(user_id, card.mal_id)
+        status = entry["status"] if entry else None
+        is_fav = entry["is_favorite"] if entry else False
+        status_label = t(f"status_{status}", lang) if status else t("status_track", lang)
+        track_row.append(InlineKeyboardButton(text=status_label, callback_data=f"ut:{card.mal_id}:st"))
+        fav_label = t("btn_favorite_on" if is_fav else "btn_favorite_off", lang)
+        track_row.append(InlineKeyboardButton(text=fav_label, callback_data=f"ut:{card.mal_id}:fav"))
+
+        if status in ("watching", "plan"):
+            current_ep = entry["current_episode"] if entry else 0
+            next_ep = current_ep + 1
+            watch_url = _next_episode_watch_url(card, next_ep)
+            if watch_url:
+                progress_row.append(
+                    InlineKeyboardButton(text=t("btn_watch_episode", lang, ep=next_ep), url=watch_url)
+                )
+                progress_row.append(
+                    InlineKeyboardButton(text=t("btn_mark_watched", lang), callback_data=f"ut:{card.mal_id}:ep:{next_ep}")
+                )
+
     # Bottom row: shortcut back to the persistent menu — saves users from
     # typing /start after browsing a card.
     menu_row: list[InlineKeyboardButton] = [
         InlineKeyboardButton(text=t("btn_menu", lang), callback_data="menu:home")
     ]
 
-    keyboard = [row for row in (nav_row, action_row, watch_row, kodik_row, sub_row, meta_row, menu_row) if row]
+    keyboard = [
+        row for row in
+        (nav_row, action_row, watch_row, kodik_row, sub_row, track_row, progress_row, meta_row, menu_row)
+        if row
+    ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def _next_episode_watch_url(card: AnimeCard, ep: int) -> str | None:
+    if card.anilibria_code and ep in card.episode_uuids:
+        return anilibria_service.episode_url(card.anilibria_code, card.episode_uuids[ep])
+    if card.anilibria_code and ep in card.episodes_available:
+        return anilibria_service.episode_url(card.anilibria_code)
+    if ep in card.kodik_episodes:
+        return card.kodik_episodes[ep]
+    return None
 
 
 async def send_result(message: Message, cards: list[AnimeCard], idx: int, lang: str, *, user_id: int | None = None) -> None:
