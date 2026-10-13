@@ -95,14 +95,40 @@ def _list_keyboard(count: int, lang: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def _episode_progress(card: AnimeCard) -> str | None:
-    """"released/total" episode count (e.g. "3/13") from whichever watch source
-    got enriched — this is real availability, not MAL's often-null `episodes`
-    field for still-airing titles."""
+def _episode_progress(card: AnimeCard, lang: str = "ru") -> str | None:
+    """"released/total" episode count or release status for cards in list views.
+    Handles airing progress without awkward '4/?' or '356/10' artifacts."""
+    ep_suffix = "еп." if lang == "uk" else ("ep." if lang == "en" else "эп.")
+
+    # 1. Upcoming release (has not started airing yet)
+    if card.status in ("Not yet aired", "anons"):
+        label = t("status_upcoming", lang)
+        return label.split(" ", 1)[-1] if " " in label else label
+
     available = len(card.episodes_available) or len(card.kodik_episodes)
-    if not available:
-        return None
-    return f"{available}/{card.episodes}" if card.episodes else f"{available}/?"
+    total = card.episodes
+
+    # 2. Both available and total are known:
+    if available and total:
+        if available <= total:
+            return f"{available}/{total} {ep_suffix}"
+        # Episode mismatch (e.g. franchise cumulative episodes like 356 vs 10 in current cour)
+        return f"{total} {ep_suffix}"
+
+    # 3. Only available episodes known (ongoing where total episodes is undefined):
+    if available:
+        return f"{available} {ep_suffix}"
+
+    # 4. Only total episodes known:
+    if total:
+        return f"{total} {ep_suffix}"
+
+    # 5. Currently airing title without loaded episodes:
+    if card.status in ("Currently Airing", "ongoing"):
+        label = t("status_airing", lang)
+        return label.split(" ", 1)[-1] if " " in label else label
+
+    return None
 
 
 def _format_list(cards: list[AnimeCard], lang: str, header: str) -> str:
@@ -114,7 +140,7 @@ def _format_list(cards: list[AnimeCard], lang: str, header: str) -> str:
             line = t("list_item", lang, n=i, title=title, score=score, year=card.year)
         else:
             line = t("list_item_no_year", lang, n=i, title=title, score=score)
-        progress = _episode_progress(card)
+        progress = _episode_progress(card, lang)
         if progress:
             line += f" · {progress}"
         lines.append(line)

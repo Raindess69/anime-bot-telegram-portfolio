@@ -53,13 +53,13 @@ async def top_anime_multi(filter_: str | None, type_: str | None, limit: int) ->
 
 
 async def random_anime() -> dict | None:
-    """Random anime with source fallback: Jikan → AniList.
+    """Random anime with source fallback: Shikimori → Jikan → AniList.
 
-    Jikan's /random/anime endpoint 504s regularly. When it does, we roll a
-    random popular AniList page instead — bounded to score ≥ 6 so users don't
-    get filler.
+    Shikimori provides fast, localized random picks. If it fails, we fall back
+    to Jikan or AniList.
     """
     for source_name, fn in (
+        ("shikimori", lambda: shikimori.random_anime()),
         ("jikan", lambda: jikan.random_anime()),
         ("anilist", lambda: anilist.random_anime()),
     ):
@@ -131,7 +131,17 @@ async def _vibe_fanout(
     type_: str | None,
     limit: int,
 ) -> list[dict]:
-    """One relaxation-pass: hit Jikan + AniList in parallel and merge."""
+    """One relaxation-pass: hit Shikimori + Jikan + AniList in parallel and merge."""
+    async def _shikimori() -> list[dict]:
+        try:
+            return await shikimori.search_advanced(
+                min_score=min_score, year_from=year_from, year_to=year_to,
+                genre_id=genre_id, type_=type_, limit=limit,
+            )
+        except Exception as e:
+            _log.info("Shikimori vibe search failed: %s", e)
+            return []
+
     async def _jikan() -> list[dict]:
         try:
             return await jikan.search_advanced(
@@ -152,8 +162,8 @@ async def _vibe_fanout(
             _log.info("AniList vibe search failed: %s", e)
             return []
 
-    j, a = await asyncio.gather(_jikan(), _anilist())
-    return _merge_by_mal(j, a, limit=limit)
+    s, j, a = await asyncio.gather(_shikimori(), _jikan(), _anilist())
+    return _merge_by_mal(s, j, a, limit=limit)
 
 
 def _merge_by_mal(*sources: list[dict], limit: int) -> list[dict]:

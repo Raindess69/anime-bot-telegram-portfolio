@@ -75,6 +75,74 @@ async def seasonal(year: int, season: str, limit: int = 10) -> list[dict]:
     return [_parse_short(x) for x in items if x]
 
 
+async def search_advanced(
+    *,
+    min_score: float | None = None,
+    year_from: int | None = None,
+    year_to: int | None = None,
+    genre_id: int | None = None,
+    type_: str | None = None,
+    limit: int = 10,
+) -> list[dict]:
+    params: dict[str, str | int] = {
+        "limit": limit,
+        "order": "popularity",
+        "censored": "true",
+    }
+    if min_score is not None:
+        params["score"] = int(min_score)
+    if genre_id is not None:
+        params["genre"] = genre_id
+    if type_ and type_ in _KIND_MAP:
+        params["kind"] = _KIND_MAP[type_]
+
+    if year_from and year_to:
+        if year_from == year_to:
+            params["season"] = str(year_from)
+        else:
+            params["season"] = f"{year_from}_{year_to}"
+    elif year_from:
+        params["season"] = f"{year_from}_2026"
+    elif year_to:
+        params["season"] = f"1970_{year_to}"
+
+    async with _client() as client:
+        try:
+            resp = await client.get(f"{BASE_URL}/animes", params=params)
+            resp.raise_for_status()
+        except (httpx.HTTPError, httpx.TimeoutException) as e:
+            _log.info("Shikimori search_advanced failed: %s", e)
+            return []
+        items = resp.json() or []
+    return [_parse_short(x) for x in items if x]
+
+
+async def random_anime() -> dict | None:
+    params: dict[str, str | int] = {
+        "order": "random",
+        "limit": 1,
+        "score": 6,
+        "censored": "true",
+    }
+    async with _client() as client:
+        try:
+            resp = await client.get(f"{BASE_URL}/animes", params=params)
+            resp.raise_for_status()
+            items = resp.json() or []
+            if not items:
+                return None
+            item = items[0]
+            shiki_id = item.get("id")
+            if shiki_id:
+                full = await get_by_id(shiki_id)
+                if full:
+                    return full
+            return _parse_short(item)
+        except Exception as e:
+            _log.info("Shikimori random failed: %s", e)
+            return None
+
+
 async def get_by_id(shikimori_id: int) -> dict | None:
     async with _client() as client:
         try:
@@ -99,6 +167,7 @@ def _year_from_date(date_str) -> int | None:
 def _parse_short(raw: dict) -> dict:
     return {
         "shikimori_id": raw.get("id"),
+        "mal_id": raw.get("id"),
         "title_ru": _norm_str(raw.get("russian")) or _norm_str(raw.get("name")),
         "title_en": _norm_str(raw.get("name")),
         "score": float(raw["score"]) if raw.get("score") else None,
@@ -112,6 +181,7 @@ def _parse_short(raw: dict) -> dict:
 def _parse_full(raw: dict) -> dict:
     return {
         "shikimori_id": raw.get("id"),
+        "mal_id": raw.get("id"),
         "title_ru": _norm_str(raw.get("russian")) or _norm_str(raw.get("name")),
         "title_en": _norm_str(raw.get("name")),
         "title_jp": _norm_str(raw.get("japanese")),

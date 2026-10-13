@@ -1,8 +1,10 @@
 import asyncio
 import logging
+import os
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
@@ -30,8 +32,18 @@ async def main() -> None:
 
     await init_db()
 
+    # Support proxy when running in sandboxed or firewalled cloud environments
+    proxy = (
+        os.getenv("HTTPS_PROXY")
+        or os.getenv("HTTP_PROXY")
+        or os.getenv("https_proxy")
+        or os.getenv("http_proxy")
+    )
+    session = AiohttpSession(proxy=proxy) if proxy else None
+
     bot = Bot(
         token=settings.bot_token,
+        session=session,
         default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
     dp = Dispatcher(storage=MemoryStorage())
