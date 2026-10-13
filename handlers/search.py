@@ -120,6 +120,23 @@ async def build_keyboard(
                     InlineKeyboardButton(text=t("btn_mark_watched", lang), callback_data=f"ut:{card.mal_id}:ep:{next_ep}")
                 )
 
+    # Mini App direct link row
+    tma_row: list[InlineKeyboardButton] = []
+    if card.mal_id:
+        try:
+            from handlers.commands import get_mini_app_url
+            from aiogram.types import WebAppInfo
+            app_url = get_mini_app_url()
+            if app_url and app_url.startswith("https://"):
+                tma_row.append(
+                    InlineKeyboardButton(
+                        text="📺 Открыть в EnjoyAnime (Mini App)",
+                        web_app=WebAppInfo(url=f"{app_url}#title/{card.mal_id}"),
+                    )
+                )
+        except Exception:
+            pass
+
     # Bottom row: shortcut back to the persistent menu — saves users from
     # typing /start after browsing a card.
     menu_row: list[InlineKeyboardButton] = [
@@ -128,7 +145,7 @@ async def build_keyboard(
 
     keyboard = [
         row for row in
-        (nav_row, action_row, watch_row, kodik_row, sub_row, track_row, progress_row, meta_row, menu_row)
+        (nav_row, tma_row, action_row, watch_row, kodik_row, sub_row, track_row, progress_row, meta_row, menu_row)
         if row
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)

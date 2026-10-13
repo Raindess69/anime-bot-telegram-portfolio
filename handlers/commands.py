@@ -136,6 +136,13 @@ def get_mini_app_url() -> str:
 async def cmd_webapp(message: Message) -> None:
     from aiogram.types import WebAppInfo
 
+    # Refresh menu button on demand
+    try:
+        from bot import refresh_menu_button
+        await refresh_menu_button(message.bot)
+    except Exception:
+        pass
+
     current_url = get_mini_app_url()
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -144,13 +151,19 @@ async def cmd_webapp(message: Message) -> None:
                     text="📺 Открыть EnjoyAnime (Mini App)",
                     web_app=WebAppInfo(url=current_url),
                 )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🌐 Открыть в браузере",
+                    url=current_url,
+                )
             ]
         ]
     )
     await message.answer(
         f"✨ <b>EnjoyAnime WebApp</b>\n\n"
-        f"🔗 Актуальный адрес: <code>{current_url}</code>\n\n"
-        "Нажмите на кнопку ниже, чтобы открыть приложение:",
+        f"🔗 <b>Актуальный адрес:</b>\n<code>{current_url}</code>\n\n"
+        "💡 <i>Если у вас открывается старый адрес или ошибка DNS: закройте окно Mini App (крестик вверху) и нажмите кнопку ниже заново.</i>",
         parse_mode=ParseMode.HTML,
         reply_markup=kb,
     )

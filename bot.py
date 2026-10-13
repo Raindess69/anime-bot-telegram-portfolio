@@ -94,6 +94,30 @@ async def refresh_menu_button(bot: Bot) -> None:
         logging.warning("Could not refresh chat menu button: %s", e)
 
 
+async def watch_url_changes(bot: Bot) -> None:
+    """Continuously monitors .env for tunnel URL updates and syncs Telegram Menu Button dynamically."""
+    last_url: str | None = None
+    while True:
+        try:
+            from dotenv import dotenv_values
+            vals = dotenv_values(".env")
+            current_url = vals.get("WEB_APP_URL") or vals.get("MINI_APP_URL") or settings.mini_app_url
+            if current_url and current_url.startswith("https://") and current_url != last_url:
+                from aiogram.types import MenuButtonWebApp, WebAppInfo
+                await bot.set_chat_menu_button(
+                    menu_button=MenuButtonWebApp(
+                        text="📺 Mini App",
+                        web_app=WebAppInfo(url=current_url),
+                    )
+                )
+                settings.mini_app_url = current_url
+                last_url = current_url
+                logging.info("Chat Menu Button dynamically synced with new URL: %s", current_url)
+        except Exception as e:
+            logging.debug("Menu button watcher error: %s", e)
+        await asyncio.sleep(4)
+
+
 async def main() -> None:
     logging.basicConfig(
         level=logging.INFO,
@@ -146,6 +170,7 @@ async def main() -> None:
     logging.info("Mini App web server listening on %s:%s", settings.web_host, settings.web_port)
 
     scheduler_task = asyncio.create_task(run_periodic_check(bot))
+    url_watcher_task = asyncio.create_task(watch_url_changes(bot))
 
     # Self-healing polling loop: auto-recovers within 3s when sandbox rotates proxy credentials
     try:
@@ -181,6 +206,7 @@ async def main() -> None:
                 fresh_proxy = get_current_proxy()
                 bot.session = AiohttpSession(proxy=fresh_proxy) if fresh_proxy else None
     finally:
+        url_watcher_task.cancel()
         scheduler_task.cancel()
         web_server.should_exit = True
         try:

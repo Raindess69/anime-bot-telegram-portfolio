@@ -1414,6 +1414,35 @@
     }
 
     loadFeed();
+
+    // Deep-link routing via URL hash or Telegram start_param
+    function handleDeepLinks() {
+      try {
+        const hash = window.location.hash || '';
+        if (hash.startsWith('#title/')) {
+          const id = parseInt(hash.replace('#title/', ''), 10);
+          if (id) {
+            setTimeout(() => openCard(id), 450);
+            return;
+          }
+        }
+        const param = tg?.initDataUnsafe?.start_param;
+        if (param) {
+          if (param.startsWith('t_')) {
+            const id = parseInt(param.replace('t_', ''), 10);
+            if (id) setTimeout(() => openCard(id), 450);
+          } else if (param.startsWith('w_')) {
+            const parts = param.split('_');
+            const id = parseInt(parts[1], 10);
+            const ep = parts[2] ? parseInt(parts[2], 10) : 1;
+            if (id) setTimeout(() => playEpisode(id, ep), 550);
+          }
+        }
+      } catch (err) {
+        console.error('Deep link error:', err);
+      }
+    }
+    handleDeepLinks();
   </script>
 </body>
 </html>

@@ -118,13 +118,30 @@ async def check_new_episodes(bot: Bot) -> None:
         text = t("new_episode_notification", lang, title=sub["title"], episode=max_ep)
         text += "\n" + t("new_episode_sources", lang)
 
-        rows = [
-            [InlineKeyboardButton(
-                text=t("btn_source_watch", lang, source=p["name"]),
-                url=p["url"],
-            )]
-            for p in available
-        ]
+        rows = []
+        try:
+            from handlers.commands import get_mini_app_url
+            from aiogram.types import WebAppInfo
+            app_url = get_mini_app_url()
+            if app_url and app_url.startswith("https://"):
+                target_mal = sub.get("mal_id") or sub.get("shikimori_id")
+                target_url = f"{app_url}#title/{target_mal}" if target_mal else app_url
+                rows.append([
+                    InlineKeyboardButton(
+                        text="📺 Смотреть в EnjoyAnime (Mini App)",
+                        web_app=WebAppInfo(url=target_url),
+                    )
+                ])
+        except Exception:
+            pass
+
+        for p in available:
+            rows.append([
+                InlineKeyboardButton(
+                    text=t("btn_source_watch", lang, source=p["name"]),
+                    url=p["url"],
+                )
+            ])
         kb = InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
 
         try:
