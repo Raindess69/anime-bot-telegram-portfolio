@@ -5,6 +5,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, C
 
 from db import get_lang, set_lang
 from db.subscriptions import list_subscriptions
+from db.users import set_user_blocked
 from locales import t
 
 from .callbacks import subs_keyboard
@@ -43,6 +44,8 @@ async def cmd_start(message: Message) -> None:
     # Always ask for language first, even for returning users — the picker was
     # previously buried under the welcome for registered users and got missed.
     # cb_start_lang upserts via set_lang, so this works identically for both.
+    if message.from_user:
+        await set_user_blocked(message.from_user.id, False)
     await message.answer(
         t("choose_lang_first", "ru"),  # trilingual banner, language-agnostic
         reply_markup=_lang_keyboard(prefix="startlang"),

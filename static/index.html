@@ -71,7 +71,19 @@
       color: #f8fafc;
       font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
       overflow-x: hidden;
-      padding-bottom: 96px;
+      padding-top: env(safe-area-inset-top, 0px);
+      padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+      padding-left: env(safe-area-inset-left, 0px);
+      padding-right: env(safe-area-inset-right, 0px);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, ::before, ::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
     }
 
     /* Glassmorphism */
@@ -176,6 +188,11 @@
       box-shadow: 0 0 20px -4px rgba(99,102,241,0.4);
     }
   </style>
+
+  <script>
+    window.FALLBACK_POSTER = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='450' viewBox='0 0 300 450'><defs><linearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%23181825'/><stop offset='50%25' stop-color='%2311111b'/><stop offset='100%25' stop-color='%230b0b12'/></linearGradient></defs><rect width='100%25' height='100%25' fill='url(%23g)'/><circle cx='150' cy='200' r='42' fill='%236366f1' fill-opacity='0.25' stroke='%23818cf8' stroke-width='1.5'/><polygon points='142,185 166,200 142,215' fill='%23ffffff'/><text x='150' y='275' font-family='sans-serif' font-size='13' font-weight='800' fill='%2394a3b8' text-anchor='middle' letter-spacing='3'>ENJOYANIME</text></svg>";
+    window.imgFallback = function(el) { if (el) { el.onerror = null; el.src = window.FALLBACK_POSTER; } };
+  </script>
 </head>
 <body class="select-none antialiased">
 
@@ -261,7 +278,7 @@
             </span>
           </div>
         </div>
-        <img id="hero-img" src="" alt="Hero" class="w-full h-64 object-cover object-center group-hover:scale-105 transition-all duration-700" onerror="imgFallback(this)">
+        <img id="hero-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 2 3'%3E%3C/svg%3E" alt="Hero" class="w-full h-64 object-cover object-center group-hover:scale-105 transition-all duration-700" onerror="imgFallback(this)">
       </div>
 
       <!-- CONTINUE WATCHING ROW -->
@@ -527,7 +544,7 @@
 
       <!-- HEADER INFO: POSTER + METADATA -->
       <div class="flex gap-4">
-        <img id="modal-poster" src="" alt="Poster" class="w-24 h-36 object-cover rounded-2xl shadow-card-elevated border border-white/10 flex-shrink-0" onerror="imgFallback(this)">
+        <img id="modal-poster" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 2 3'%3E%3C/svg%3E" alt="Poster" class="w-24 h-36 object-cover rounded-2xl shadow-card-elevated border border-white/10 flex-shrink-0" onerror="imgFallback(this)">
         <div class="flex-1 space-y-2">
           <h3 id="modal-title" class="text-base font-extrabold text-white leading-tight line-clamp-2">
             Название аниме
@@ -544,11 +561,19 @@
         </div>
       </div>
 
-      <!-- PRIMARY BIG "WATCH" HERO BUTTON -->
-      <button id="modal-hero-watch" class="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 text-white font-extrabold flex items-center justify-center gap-2.5 shadow-glow-indigo active:scale-95 transition" onclick="scrollToPlayer()">
-        <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-        <span id="modal-hero-watch-text">Смотреть 1 серию</span>
-      </button>
+      <!-- PRIMARY BIG "WATCH" HERO BUTTON & SHARE BUTTONS -->
+      <div class="flex items-center gap-2">
+        <button id="modal-hero-watch" class="flex-1 py-3 px-4 rounded-2xl bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 text-white font-extrabold flex items-center justify-center gap-2 shadow-glow-indigo active:scale-95 transition" onclick="scrollToPlayer()">
+          <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          <span id="modal-hero-watch-text">Смотреть 1 серию</span>
+        </button>
+        <button onclick="shareCurrentTitle()" title="Поделиться ссылкой" class="py-3 px-3.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 active:scale-95 transition flex items-center justify-center">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+        </button>
+        <button onclick="shareToStory()" title="Поделиться в Story" class="py-3 px-3.5 rounded-2xl bg-gradient-to-tr from-pink-600/20 to-purple-600/20 hover:from-pink-600/30 hover:to-purple-600/30 border border-pink-500/30 text-pink-300 active:scale-95 transition flex items-center justify-center">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+        </button>
+      </div>
 
       <!-- CINEMATIC VIDEO PLAYER HUB -->
       <div id="player-container" class="w-full aspect-video bg-black rounded-2xl overflow-hidden border border-white/15 relative shadow-glow-indigo hidden">
@@ -556,6 +581,13 @@
         <video id="hls-video" class="w-full h-full object-contain hidden" playsinline controls preload="metadata"></video>
         <!-- Iframe Player for Kodik / Shikicinema Embed -->
         <iframe id="video-frame" src="" class="w-full h-full border-0 hidden" allowfullscreen allow="autoplay; fullscreen; picture-in-picture"></iframe>
+        <!-- Autoplay Policy Fallback Overlay -->
+        <div id="player-autoplay-overlay" class="absolute inset-0 bg-black/60 flex flex-col items-center justify-center z-20 hidden cursor-pointer" onclick="resumeAutoplay()">
+          <button class="w-14 h-14 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center shadow-glow-indigo transition transform active:scale-95">
+            <svg class="w-7 h-7 fill-current ml-1" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          </button>
+          <span class="text-xs font-semibold text-white/90 mt-2">Нажмите для воспроизведения ▶</span>
+        </div>
       </div>
 
       <!-- CUSTOM SEEKBAR & VIDEO CONTROLS (ПОЛЗУНОК ПЕРЕМОТКИ ДЛЯ HLS) -->
@@ -980,10 +1012,14 @@
 
     // SEARCH
     let debounceTimer;
+    let searchAbortController = null;
+    let searchSeqId = 0;
+
     document.getElementById('search-input').addEventListener('input', (e) => {
       clearTimeout(debounceTimer);
       const query = e.target.value.trim();
       if (!query) {
+        if (searchAbortController) searchAbortController.abort();
         document.getElementById('search-results').innerHTML = '';
         return;
       }
@@ -995,11 +1031,20 @@
       const resultsEl = document.getElementById('search-results');
       statusEl.classList.remove('hidden');
 
-      try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-        const cards = await res.json();
-        statusEl.classList.add('hidden');
+      if (searchAbortController) {
+        searchAbortController.abort();
+      }
+      searchAbortController = new AbortController();
+      const currentSeq = ++searchSeqId;
 
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`, {
+          signal: searchAbortController.signal,
+        });
+        const cards = await res.json();
+        if (currentSeq !== searchSeqId) return; // Discard stale/late response
+
+        statusEl.classList.add('hidden');
         if (!cards || cards.length === 0) {
           resultsEl.innerHTML = '<div class="col-span-2 text-center text-slate-500 py-10 text-xs font-medium">Ничего не найдено</div>';
           return;
@@ -1007,15 +1052,28 @@
 
         resultsEl.innerHTML = cards.map(c => renderCardHTML(c, false)).join('');
       } catch (e) {
+        if (e.name === 'AbortError') return;
+        if (currentSeq !== searchSeqId) return;
         statusEl.classList.add('hidden');
+        resultsEl.innerHTML = `<div class="col-span-2 text-center text-rose-400 py-10 text-xs font-medium">
+          Ошибка сети при поиске.
+        </div>`;
       }
     }
 
     // OPEN CARD & PLAYER
-    async function openCard(animeId) {
+    async function openCard(animeId, targetEpisode = null) {
       haptic();
       const modal = document.getElementById('detail-modal');
       modal.classList.remove('hidden');
+
+      if (tg?.BackButton) {
+        tg.BackButton.show();
+        tg.BackButton.onClick(closeDetail);
+      }
+
+      // Reset completion markers for the new card
+      completedEpisodes.clear();
 
       // Clear previous status & favorite button highlights
       ['watching', 'plan', 'completed'].forEach(s => {
@@ -1144,7 +1202,7 @@
         // Fetch user title state (status, current_episode, is_favorite)
         apiFetch(`/api/library/title/${animeId}?user_id=${user.id}`)
           .then(r => r.json())
-          .then(state => {
+          .then(async state => {
             if (state && state.status) {
               const activeBtn = document.getElementById(`btn-set-${state.status}`);
               if (activeBtn) activeBtn.classList.add('status-btn-active');
@@ -1158,6 +1216,22 @@
               document.getElementById('modal-hero-watch-text').textContent = `Продолжить: ${state.current_episode} серия`;
               document.getElementById('episodes-active-badge').textContent = `Серия ${state.current_episode}`;
               highlightActiveEpisode(state.current_episode);
+            }
+
+            // Deep-link episode override: if a target episode was requested, play it
+            if (targetEpisode && typeof targetEpisode === 'number' && targetEpisode > 0) {
+              const streamMap = (data.sources && data.sources.anilibria_streams) || {};
+              const hasStream = streamMap[targetEpisode] || (data.kodik && data.kodik.episode_streams && data.kodik.episode_streams[targetEpisode]);
+              if (hasStream) {
+                currentPlayingEpisode = targetEpisode;
+                document.getElementById('episodes-active-badge').textContent = `Серия ${targetEpisode}`;
+                highlightActiveEpisode(targetEpisode);
+                await activateEpisode(targetEpisode);
+              } else {
+                showToast(`Серия ${targetEpisode} недоступна для просмотра`);
+                document.getElementById('episodes-active-badge').textContent = `Серия ${targetEpisode}`;
+                highlightActiveEpisode(targetEpisode);
+              }
             }
           })
           .catch(() => {});
@@ -1182,6 +1256,8 @@
       const hlsVideo = document.getElementById('hls-video');
       const videoFrame = document.getElementById('video-frame');
       const customControls = document.getElementById('custom-player-controls');
+      const overlay = document.getElementById('player-autoplay-overlay');
+      if (overlay) overlay.classList.add('hidden');
       if (hlsVideo) {
         hlsVideo.pause();
         hlsVideo.classList.add('hidden');
@@ -1200,12 +1276,61 @@
       }
     }
 
+    function resumeAutoplay() {
+      const hlsVideo = document.getElementById('hls-video');
+      const overlay = document.getElementById('player-autoplay-overlay');
+      if (overlay) overlay.classList.add('hidden');
+      if (hlsVideo) hlsVideo.play().catch(console.error);
+    }
+
+    function shareCurrentTitle() {
+      haptic();
+      if (!currentCard) return;
+      const malId = currentCard.shikimori_id || currentCard.mal_id;
+      const title = currentCard.title_ru || currentCard.title_en || 'EnjoyAnime';
+      const ep = currentPlayingEpisode || 1;
+      const shareText = `Смотрю «${title}» (${ep} серия) в EnjoyAnime! 🍿`;
+      const shareUrl = `https://t.me/AnimeSpaceFree_bot?startapp=w_${malId}_${ep}`;
+
+      if (tg && tg.openTelegramLink) {
+        tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText)}`);
+      } else if (navigator.share) {
+        navigator.share({ title: title, text: shareText, url: shareUrl }).catch(() => {});
+      } else if (navigator.clipboard) {
+        navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
+        showToast('Ссылка на тайтл скопирована! 📋');
+      }
+    }
+
+    function shareToStory() {
+      haptic();
+      if (!currentCard) return;
+      const malId = currentCard.shikimori_id || currentCard.mal_id;
+      const ep = currentPlayingEpisode || 1;
+      const mediaUrl = currentCard.image_url;
+      const shareUrl = `https://t.me/AnimeSpaceFree_bot?startapp=w_${malId}_${ep}`;
+
+      if (tg && tg.shareToStory && mediaUrl && mediaUrl.startsWith('https://')) {
+        tg.shareToStory(mediaUrl, {
+          text: `Смотрю «${currentCard.title_ru || currentCard.title_en}»`,
+          widget_link: {
+            url: shareUrl,
+            name: 'Смотреть в EnjoyAnime'
+          }
+        });
+      } else {
+        shareCurrentTitle();
+      }
+    }
+
     function playVideo(url) {
       const hlsVideo = document.getElementById('hls-video');
       const videoFrame = document.getElementById('video-frame');
       const playerContainer = document.getElementById('player-container');
       const fallbackCard = document.getElementById('player-fallback-card');
       const customControls = document.getElementById('custom-player-controls');
+      const overlay = document.getElementById('player-autoplay-overlay');
+      if (overlay) overlay.classList.add('hidden');
 
       if (!url) {
         stopVideo();
@@ -1248,13 +1373,56 @@
               }
             });
             currentHls.on(Hls.Events.MANIFEST_PARSED, function () {
-              hlsVideo.play().catch(() => {});
+              hlsVideo.play().catch((err) => {
+                console.log('Autoplay prevented:', err);
+                const playOverlay = document.getElementById('player-autoplay-overlay');
+                if (playOverlay) playOverlay.classList.remove('hidden');
+              });
+            });
+            let hlsRetries = { network: 0, media: 0 };
+            const MAX_HLS_RETRIES = 3;
+
+            currentHls.on(Hls.Events.ERROR, function (event, data) {
+              if (data && data.fatal) {
+                switch (data.type) {
+                  case Hls.ErrorTypes.NETWORK_ERROR:
+                    if (hlsRetries.network < MAX_HLS_RETRIES) {
+                      hlsRetries.network++;
+                      console.warn(`HLS Network error; attempting recovery (${hlsRetries.network}/${MAX_HLS_RETRIES})...`);
+                      currentHls.startLoad();
+                    } else {
+                      console.error('Fatal HLS Network error; max retries exceeded');
+                      stopVideo();
+                      showToast('Сетевой сбой при загрузке видео. Попробуйте другую озвучку.');
+                    }
+                    break;
+                  case Hls.ErrorTypes.MEDIA_ERROR:
+                    if (hlsRetries.media < MAX_HLS_RETRIES) {
+                      hlsRetries.media++;
+                      console.warn(`HLS Media error; attempting recovery (${hlsRetries.media}/${MAX_HLS_RETRIES})...`);
+                      currentHls.recoverMediaError();
+                    } else {
+                      console.error('Fatal HLS Media error; max retries exceeded');
+                      stopVideo();
+                      showToast('Ошибка медиа-потока. Попробуйте другую озвучку.');
+                    }
+                    break;
+                  default:
+                    console.error('Fatal unrecoverable HLS error');
+                    stopVideo();
+                    break;
+                }
+              }
             });
           } else if (hlsVideo.canPlayType('application/vnd.apple.mpegurl')) {
             // Native Safari / iOS WebKit HLS
             hlsVideo.src = url;
             hlsVideo.addEventListener('loadedmetadata', function () {
-              hlsVideo.play().catch(() => {});
+              hlsVideo.play().catch((err) => {
+                console.log('Autoplay prevented (native):', err);
+                const playOverlay = document.getElementById('player-autoplay-overlay');
+                if (playOverlay) playOverlay.classList.remove('hidden');
+              });
             }, { once: true });
           } else {
             hlsVideo.src = url;
@@ -1391,10 +1559,59 @@
       }
     }
 
+    let currentEpisodePage = 0;
+    const EPISODES_PER_RANGE = 25;
+
     function renderEpisodeButtons(episodesMap) {
       const epList = document.getElementById('episodes-list');
       const epKeys = Object.keys(episodesMap).map(Number).sort((a,b)=>a-b);
-      epList.innerHTML = epKeys.map((epNum) => `
+      if (epKeys.length === 0) {
+        epList.innerHTML = '<div class="text-xs text-slate-500 py-2">Серии не найдены</div>';
+        return;
+      }
+
+      let rangeNavHTML = '';
+      let visibleKeys = epKeys;
+      if (epKeys.length > EPISODES_PER_RANGE) {
+        const totalRanges = Math.ceil(epKeys.length / EPISODES_PER_RANGE);
+        const activeIdx = epKeys.indexOf(currentPlayingEpisode);
+        if (activeIdx >= 0) {
+          currentEpisodePage = Math.floor(activeIdx / EPISODES_PER_RANGE);
+        }
+        rangeNavHTML = `
+          <div class="col-span-full flex items-center justify-between pb-2 mb-1 border-b border-white/5">
+            <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+              ${Array.from({length: totalRanges}, (_, i) => {
+                const start = epKeys[i * EPISODES_PER_RANGE];
+                const end = epKeys[Math.min((i + 1) * EPISODES_PER_RANGE - 1, epKeys.length - 1)];
+                const isSelected = i === currentEpisodePage;
+                return `
+                  <button
+                    onclick="selectEpisodeRange(${i})"
+                    class="px-2.5 py-1 rounded-lg text-[11px] transition ${isSelected ? 'bg-indigo-600 text-white font-bold' : 'bg-white/5 text-slate-400 hover:text-white'}"
+                  >
+                    ${start}–${end}
+                  </button>
+                `;
+              }).join('')}
+            </div>
+            <div class="flex items-center gap-1 shrink-0 ml-2">
+              <input
+                id="quick-ep-jump"
+                type="number"
+                min="1"
+                placeholder="№..."
+                class="w-14 bg-white/5 border border-white/10 rounded-lg px-2 py-0.5 text-[11px] text-white text-center outline-none focus:border-indigo-500"
+                onkeydown="if(event.key==='Enter') jumpToEpisode(this.value)"
+              />
+              <button onclick="jumpToEpisode(document.getElementById('quick-ep-jump').value)" class="text-[11px] px-2 py-0.5 bg-indigo-600/80 hover:bg-indigo-600 text-white rounded-lg">Перейти</button>
+            </div>
+          </div>
+        `;
+        visibleKeys = epKeys.slice(currentEpisodePage * EPISODES_PER_RANGE, (currentEpisodePage + 1) * EPISODES_PER_RANGE);
+      }
+
+      epList.innerHTML = rangeNavHTML + visibleKeys.map((epNum) => `
         <button 
           id="ep-btn-${epNum}"
           class="ep-btn px-3 py-1.5 rounded-xl ${epNum === currentPlayingEpisode ? 'bg-gradient-to-tr from-violet-600 to-indigo-600 text-white border border-indigo-400 shadow-glow-indigo' : 'bg-white/5 border border-white/10 text-slate-200'} text-xs font-bold hover:bg-indigo-600 hover:text-white transition active:scale-95"
@@ -1405,34 +1622,24 @@
       `).join('');
     }
 
-    async function switchTranslation(animeId, transId) {
-      haptic();
-      try {
-        const res = await apiFetch(`/api/player/${animeId}?translation_id=${transId}`);
-        const playerInfo = await res.json();
-        if (!playerInfo || !playerInfo.url) return;
+    function selectEpisodeRange(rangeIdx) {
+      currentEpisodePage = rangeIdx;
+      if (currentCard && currentCard.kodik && currentCard.kodik.episodes) {
+        renderEpisodeButtons(currentCard.kodik.episodes);
+      } else {
+        renderEpisodeButtons({});
+      }
+    }
 
-        if (currentCard) {
-          currentCard.kodik = playerInfo;
-        }
-        playVideo(playerInfo.url);
-        document.getElementById('player-voice').textContent = playerInfo.translation || 'Стандартная';
-
-        document.querySelectorAll('.voice-pill').forEach(b => {
-          b.className = 'voice-pill shrink-0 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-slate-300 text-xs active:scale-95 transition';
-        });
-        const activePill = document.getElementById(`voice-pill-${transId}`);
-        if (activePill) {
-          activePill.className = 'voice-pill shrink-0 px-3 py-1.5 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 text-white font-bold shadow-glow-indigo text-xs active:scale-95 transition';
-        }
-
-        if (playerInfo.episodes && Object.keys(playerInfo.episodes).length > 0) {
-          document.getElementById('episodes-wrapper').classList.remove('hidden');
-          renderEpisodeButtons(playerInfo.episodes);
-        }
-        showToast(`Озвучка: ${playerInfo.translation || 'выбрана'} 🎙️`);
-      } catch (e) {
-        console.error('Switch translation error:', e);
+    function jumpToEpisode(val) {
+      const epNum = parseInt(val, 10);
+      if (!epNum || isNaN(epNum)) return;
+      const episodesMap = (currentCard && currentCard.kodik && currentCard.kodik.episodes) || {};
+      if (episodesMap[epNum] !== undefined) {
+        changeEpisode(episodesMap[epNum] || '', epNum);
+        highlightActiveEpisode(epNum);
+      } else {
+        showToast(`Серия ${epNum} пока недоступна`);
       }
     }
 
@@ -1443,6 +1650,7 @@
       const activeBtn = document.getElementById(`ep-btn-${epNum}`);
       if (activeBtn) {
         activeBtn.className = 'ep-btn px-3 py-1.5 rounded-xl bg-gradient-to-tr from-violet-600 to-indigo-600 text-white border border-indigo-400 text-xs font-bold shadow-glow-indigo transition active:scale-95';
+        activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
       }
     }
 
@@ -1479,6 +1687,19 @@
 
     // Kodik & PlayerJS postMessage Listener for Watch Progress
     window.addEventListener('message', (event) => {
+      // Validate frame source and origin to prevent false progress from undocumented or arbitrary frames
+      const iframe = document.getElementById('player-iframe');
+      if (iframe && iframe.contentWindow && event.source && event.source !== iframe.contentWindow) {
+        return;
+      }
+
+      const origin = event.origin || '';
+      const isAllowed = origin === window.location.origin ||
+        origin.includes('kodik') ||
+        origin.includes('anilibria') ||
+        origin.includes('libria.fun');
+      if (!isAllowed) return;
+
       let msg = event.data;
       if (typeof msg === 'string') {
         try { msg = JSON.parse(msg); } catch (e) { return; }
@@ -1619,11 +1840,16 @@
       });
     }
 
-    document.getElementById('modal-close').onclick = () => {
+    function closeDetail() {
       haptic();
-      document.getElementById('detail-modal').classList.add('hidden');
+      const modal = document.getElementById('detail-modal');
+      if (modal) modal.classList.add('hidden');
       stopVideo();
-    };
+      if (tg?.BackButton) {
+        tg.BackButton.hide();
+      }
+    }
+    document.getElementById('modal-close').onclick = closeDetail;
 
     // User Profile Modal Drawer
     async function openProfileModal() {
@@ -1837,28 +2063,56 @@
     initCustomPlayerControls();
     loadFeed();
 
-    // Deep-link routing via URL hash or Telegram start_param
+    async function playEpisode(animeId, episodeNum = 1) {
+      await openCard(animeId, episodeNum);
+    }
+
+    // Deep-link routing via URL hash, URL query params, or Telegram start_param (Task P1.2)
+    let deepLinkHandled = false;
     function handleDeepLinks() {
+      if (deepLinkHandled) return;
       try {
+        let targetId = null;
+        let targetEp = 1;
+
+        // 1. Try URL Hash: #w_{mal_id}_{episode} or #title/{id}
         const hash = window.location.hash || '';
-        if (hash.startsWith('#title/')) {
-          const id = parseInt(hash.replace('#title/', ''), 10);
-          if (id) {
-            setTimeout(() => openCard(id), 450);
-            return;
+        if (hash.startsWith('#w_')) {
+          const parts = hash.replace('#w_', '').split('_');
+          targetId = parseInt(parts[0], 10);
+          targetEp = parts[1] ? parseInt(parts[1], 10) : 1;
+        } else if (hash.startsWith('#title/')) {
+          targetId = parseInt(hash.replace('#title/', ''), 10);
+        }
+
+        // 2. Try URL Search Params: ?startapp=w_{mal_id}_{episode}
+        if (!targetId) {
+          const urlParams = new URLSearchParams(window.location.search);
+          const startapp = urlParams.get('startapp') || urlParams.get('start_param');
+          if (startapp && startapp.startsWith('w_')) {
+            const parts = startapp.split('_');
+            targetId = parseInt(parts[1], 10);
+            targetEp = parts[2] ? parseInt(parts[2], 10) : 1;
           }
         }
-        const param = tg?.initDataUnsafe?.start_param;
-        if (param) {
-          if (param.startsWith('t_')) {
-            const id = parseInt(param.replace('t_', ''), 10);
-            if (id) setTimeout(() => openCard(id), 450);
-          } else if (param.startsWith('w_')) {
-            const parts = param.split('_');
-            const id = parseInt(parts[1], 10);
-            const ep = parts[2] ? parseInt(parts[2], 10) : 1;
-            if (id) setTimeout(() => playEpisode(id, ep), 550);
+
+        // 3. Try Telegram WebApp start_param: w_{mal_id}_{episode} or t_{id}
+        if (!targetId) {
+          const param = tg?.initDataUnsafe?.start_param;
+          if (param) {
+            if (param.startsWith('w_')) {
+              const parts = param.split('_');
+              targetId = parseInt(parts[1], 10);
+              targetEp = parts[2] ? parseInt(parts[2], 10) : 1;
+            } else if (param.startsWith('t_')) {
+              targetId = parseInt(param.replace('t_', ''), 10);
+            }
           }
+        }
+
+        if (targetId && !isNaN(targetId) && targetId > 0) {
+          deepLinkHandled = true;
+          setTimeout(() => openCard(targetId, targetEp), 450);
         }
       } catch (err) {
         console.error('Deep link error:', err);

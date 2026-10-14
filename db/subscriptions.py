@@ -33,8 +33,9 @@ CREATE INDEX IF NOT EXISTS idx_subs_user ON subscriptions(user_id);
 """
 
 
-async def init_subscriptions() -> None:
-    async with aiosqlite.connect(settings.db_path) as db:
+async def init_subscriptions(db_path: str | None = None) -> None:
+    path = db_path or settings.db_path
+    async with aiosqlite.connect(path) as db:
         # Detect legacy v1 schema: `subscriptions` exists but has no `id` column.
         async with db.execute("PRAGMA table_info(subscriptions)") as cur:
             columns = {row[1] for row in await cur.fetchall()}

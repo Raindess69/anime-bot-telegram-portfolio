@@ -117,8 +117,10 @@ STRINGS = {
         "🎬 <b>{title}</b>\n"
         "<b>Episode {episode}</b> is out! 🎉"
     ),
+    "new_episode_push": "New episode released: <b>{title}</b>\nEpisode {episode}",
     "new_episode_sources": "▶️ Watch on:",
     "btn_source_watch": "▶️ {source}",
+    "btn_watch_episode_generic": "▶ Watch episode",
 
     "result_position": "Result {current} of {total}",
     "no_synopsis": "No synopsis available.",

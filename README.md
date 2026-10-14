@@ -15,6 +15,7 @@
 5. [Пайплайн агрегации контента и плееров](#5-пайплайн-агрегации-контента-и-плееров)
 6. [Инструкция по запуску и окружение](#6-инструкция-по-запуску-и-окружение)
 7. [Детальный план на следующую сессию (Roadmap)](#7-детальный-план-на-следующую-сессию)
+8. [Состояние разработки и задачи следующей сессии](#8-состояние-разработки-и-задачи-следующей-сессии)
 
 ---
 
@@ -58,7 +59,8 @@ anime-bot/
 ├── tunnel_keeper.sh        # Внешний bash-супервизор туннеля для muse.ai
 ├── restart_bot.sh          # Скрипт перезапуска бота при ротации прокси
 ├── services/
-│   ├── aggregator.py       # Оркестратор параллельного поиска с fallback
+│   ├── aggregator.py       # Оркестратор параллельного поиска с fallback и рекомендациями
+│   ├── http_client.py      # Общий асинхронный HTTP-клиент (connection pool, rate limits, retries)
 │   ├── shikimori.py        # Shikimori v1 API (русские названия, постеры, очистка BBCode)
 │   ├── kodik.py            # Kodik API (плеер, озвучки, серии)
 │   ├── anilibria.py        # AniLibria API (HLS потоки, UUID серий, .torrent файлы)
@@ -67,11 +69,19 @@ anime-bot/
 │   ├── yummy.py            # YummyAnime парсер
 │   └── scheduler.py        # Фоновый опрос подписок (проверка новых серий)
 ├── db/
-│   ├── database.py         # Инициализация SQLite базы bot.db
-│   ├── user_titles.py      # Таблица трекера библиотеки user_titles
+│   ├── __init__.py         # Инициализация SQLite базы bot.db и миграций
+│   ├── backup.py           # Изолированное online-резервное копирование и восстановление SQLite
+│   ├── outbox.py           # Очередь push-уведомлений и базовые точки тайтлов (Outbox)
+│   ├── user_titles.py      # Библиотека user_titles и потрековый прогресс episode_progress
 │   ├── subscriptions.py    # Таблица подписок subscriptions v2
-│   ├── users.py            # Языковые предпочтения пользователей
+│   ├── users.py            # Пользователи, языковые настройки и флаг блокировки
 │   └── history.py          # Кольцевой буфер истории поисковых запросов
+├── utils/
+│   └── cache.py            # Async-safe LRU/TTL кэш с защитой от дэдлоков и coalescing
+├── tests/                  # Автоматические тесты (53 сценария с моками без реальной отправки)
+│   ├── test_notifications.py
+│   ├── test_security_and_library.py
+│   └── test_recommendations_and_api.py
 ├── handlers/
 │   ├── commands.py         # Команды /start, /help, /app, /lang
 │   ├── search.py           # Поиск и рендеринг карточек бота с TMA deep-link
@@ -117,15 +127,28 @@ anime-bot/
 
 ## 4. Структура базы данных (SQLite `bot.db`)
 
-1. **`users`:** `user_id` (PK), `lang` (ru/uk/en).
+1. **`users`:** `user_id` (PK, INTEGER), `lang` (TEXT: ru/uk/en), `is_blocked` (INTEGER: 0/1), `created_at` (INTEGER).
 2. **`user_titles` (Библиотека):**
-   - `user_id`, `mal_id` (PK: `user_id, mal_id`).
+   - PK: `(user_id, mal_id)`.
    - `title`, `lang`, `status` (`watching`, `completed`, `plan`, `dropped`).
-   - `current_episode` (INTEGER), `is_favorite` (0/1), `image_url` (TEXT), `updated_at`.
-3. **`subscriptions` v2 (Подписки на онгоинги):**
+   - `current_episode` (INTEGER), `is_favorite` (INTEGER: 0/1 — строго независим от статуса), `image_url` (TEXT), `updated_at` (INTEGER).
+3. **`episode_progress` (Потрековый просмотр эпизодов):**
+   - PK: `(user_id, mal_id, episode)`.
+   - `position` (REAL: позиция в секундах), `duration` (REAL: общая длина в секундах), `is_completed` (INTEGER: 0/1 при достижении 85% хронометража), `updated_at` (INTEGER).
+   - *Правило 85%:* достижение позиции 85% хронометража фиксирует завершение серии, но не означает завершение всего тайтла и не помечает предыдущие серии.
+4. **`subscriptions` v2 (Подписки на онгоинги):**
    - `id` (PK), `user_id`, `mal_id` (UNIQUE: `user_id, mal_id`), `title`.
    - `anilibria_code`, `yummy_url`, `shikimori_id`, `last_episode`, `created_at`.
-4. **`search_history`:** кольцевой буфер последних 10 поисковых запросов пользователя.
+5. **`notification_outbox` (Транзакционная очередь Push-уведомлений):**
+   - `id` (PK AUTOINCREMENT), `user_id`, `mal_id`, `episode`, `event_type`.
+   - UNIQUE: `(user_id, mal_id, episode, event_type)` — абсолютная дедупликация.
+   - `title` (TEXT), `status` (`pending`, `processing`, `sent`, `failed`, `cancelled`).
+   - `attempts` (INTEGER: число реальных доставок в Telegram API), `next_attempt_at` (INTEGER), `created_at` (INTEGER), `claimed_at` (INTEGER: unix timestamp захвата lease / fencing token), `sent_at` (INTEGER), `last_error` (TEXT).
+6. **`tracked_titles` (Базовые точки онгоингов и метаданные источников):**
+   - `mal_id` (PK), `title` (TEXT), `anilibria_code` (TEXT), `yummy_url` (TEXT), `shikimori_id` (INTEGER), `last_known_episode` (INTEGER), `updated_at` (INTEGER).
+7. **`schema_migrations` (Идемпотентные миграции):**
+   - `version` (PK, TEXT), `applied_at` (INTEGER).
+8. **`search_history`:** кольцевой буфер последних 10 поисковых запросов пользователя.
 
 ---
 
@@ -175,28 +198,223 @@ bash restart_bot.sh
 
 ---
 
-## 7. Детальный план на следующую сессию (Roadmap)
+## 7. Единый сводный чек-лист Roadmap EnjoyAnime
 
-### ✅ Завершено: Встроенный плеер AniLibria HLS (Работает без токенов)
-- В `static/index.html` подключена библиотека `hls.js` и встроен нативный `<video id="hls-video">` с поддержкой Full HD потоков.
-- В `services/anilibria.py` и `web_api.py` реализовано извлечение прямых HLS потоков (`hls_720`, `hls_1080`) для всех серий тайтла.
-- При отсутствии токена Kodik плеер автоматически переключается на нативный AniLibria HLS стрим — воспроизведение доступно 100% пользователей без внешних регистраций.
+| ID | Этап / Задача | Статус | Доказательство / Блокер |
+|---|---|---|---|
+| **P1.1-R** | **Этап 1: Проверка Push Backend** | **DONE** | Таблица `notification_outbox` с `claim_token` (атомарный инкремент поколения), `claimed_at`, `recover_stale_processing` с таймаутом lease, снятие `is_blocked = 0` при активности, глобальная пауза `_telegram_flood_until`, `defer_event` без расхода попыток при отсутствии туннеля, кнопка типа `web_app` с полным HTTPS URL. Отклонение перехвата активного lease воркером B. Флаг безопасного запуска `DISABLE_OUTBOX_DISPATCH`. 39 тестов в `tests/test_notifications.py` успешно пройдены. |
+| **SEC-01** | **Этап 2: Основа и безопасность** | **DONE** | Валидация `Telegram.WebApp.initData` HMAC-SHA256 (срок жизни 7 дней для минимизированных сессий, допуск 300с рассинхронизации). Zero-trust `user_id`: клиент не может подменить чужой `user_id`. Валидация Pydantic-моделей в `web_api.py`. Маскирование секретов в `config.py` (`mask_secret`). Online-резервное копирование `db/backup.py`. Параметризованные SQL-запросы. 14 тестов в `tests/test_security_and_library.py`. |
+| **LIB-01** | **Этап 3: Библиотека и прогресс** | **DONE** | Таблица `episode_progress (user_id, mal_id, episode)`. Независимость `is_favorite` от статуса. Дедупликация тайтлов по `mal_id`. Правило 85%: просмотр до 85% хронометража помечает серию завершенной, но не завершает весь тайтл и не помечает серии 1..N-1. Защита от устаревших событий по `updated_at`. 14 тестов в `tests/test_security_and_library.py`. |
+| **API-01** | **Этап 4: API, агрегация и кэш** | **DONE** | Общий синглтон `httpx.AsyncClient` в `services/http_client.py` с пулом соединений и семафорами параллельности по доменам (`shikimori`, `kodik`, `anilibria`). Ограниченные повторы и обработка `Retry-After`. Потокобезопасный LRU `TTLCache` в `utils/cache.py` с request coalescing (`get_or_compute`) без дэдлоков. Endpoints `/health`, `/health/live`, `/health/ready`. 7 тестов в `tests/test_recommendations_and_api.py`. |
+| **VID-01** | **Этап 5: Видео и плеер** | **PARTIAL** | **IMPLEMENTED:** `static/index.html`: Ограниченное автовосстановление Hls.js (`NETWORK_ERROR` $\le 3$, `MEDIA_ERROR` $\le 3$). Autoplay Policy: всплывающий оверлей возобновления звука/видео. Валидация `event.source` и origin в postMessage (`kodik`, `anilibria`). Safe area padding и `@media (prefers-reduced-motion)`.<br>**NOT IMPLEMENTED:** Резервный балансер Kinobox в коде отсутствует (запасной источник — прямой HLS AniLibria и внешние ссылки Shikimori/AniLibria). |
+| **P1.2** | **Этап 6: Frontend Deep Link** | **PARTIAL** | **IMPLEMENTED & CHROME MOCK VERIFIED:** `static/index.html`: Функция `handleDeepLinks()` с флагом `deepLinkHandled`. Парсинг `startapp=w_{mal_id}_{episode}`, `#w_{mal_id}_{episode}` и `#title/{id}`. Запуск плеера через `playEpisode()`. Привязка `Telegram.WebApp.BackButton`. Проверено в headless Google Chrome с mock-SDK (`tests/test_frontend_chrome.py`).<br>**NOT RUN:** Проверка в реальных клиентах Telegram Android/iOS/Desktop. |
+| **UX-01** | **Этап 7: Поиск серий и UX** | **PARTIAL** | **IMPLEMENTED & CHROME MOCK VERIFIED:** Селектор серий с разбивкой по диапазонам (`1–25`, `26–50` и т.д.) при $>25$ серий. Поле быстрого перехода к номеру серии (`jumpToEpisode`). Сохранение реальной нумерации серий от провайдеров. Плавный `scrollIntoView` активного эпизода. Проверено в headless Google Chrome.<br>**NOT RUN:** Проверка на физических мобильных устройствах. |
+| **REC-01** | **Этап 8: Рекомендации (Rule-based / Vibe)** | **DONE** | `services/aggregator.py: get_recommendations()` и эндпоинт `GET /api/recommendations`. Стабильная сортировка по рейтингу, исключение просмотренных/брошенных тайтлов (`exclude_watched`), явные объяснения причин рекомендации (`recommendation_reason`). 7 тестов в `tests/test_recommendations_and_api.py`. |
+| **REC-02** | **Этап 8: Семантический поиск (Embeddings)** | **BLOCKED** | **Причина блокировки:** В рабочем окружении Python отсутствуют библиотеки векторизации и ML (`torch`, `sentence-transformers`, `numpy`). Регламент проекта строго запрещает несанкционированную установку тяжелых внешних пакетов. |
+| **SOC-01** | **Этап 9: Шеринг тайтлов и серий** | **PARTIAL** | **IMPLEMENTED & CHROME MOCK VERIFIED:** Кнопка «Поделиться» генерирует канонический deep link `t.me/<bot>?startapp=w_{mal_id}_{episode}` без PII/токенов. Вызов `Telegram.WebApp.shareToStory` с fallback на Web Share API проверен в изолированном mock SDK в Chrome.<br>**NOT RUN:** Реальная публикация Stories в живой Telegram-клиент. |
+| **SOC-02** | **Этап 9: Совместный просмотр (Watch Party)** | **BLOCKED** | **Причина блокировки:** Сторонний iframe Kodik изолирован политикой Cross-Origin (Same-Origin sandbox) и не предоставляет публичного API удаленного управления перемоткой/паузой для синхронизации нескольких клиентов. В $0 архитектуре с эфемерными туннелями отсутствует постоянный брокер WebSocket сессий для синхронизации стейта. |
+| **OPS-01** | **Этап 10: Проверки и эксплуатация** | **DONE** | Полный набор тестов: **61 тест (100% passed)**. Синтаксический анализ AST: 39 файлов (0 ошибок). `git diff --check` чист. Разработаны инструкции резервного копирования, безопасного отката, регламент единственной схемы запуска и план перехода на PostgreSQL. |
 
-### ✅ Завершено: Автоматический трекинг таймкодов (Heartbeat)
-- На видеоплеере реализован слушатель события `timeupdate` с отправкой `POST /api/library/progress` каждые 15 сек.
-- При просмотре >85% хронометража серия автоматически помечается как просмотренная (`completed`).
-- Переключение серий плавно меняет видеопоток, обновляет статус в библиотеке пользователя и hero-кнопку действия.
+---
 
-### 🎯 Приоритет 1 (P1): Push-уведомления о новых сериях из шедулера
-- **Цель:** когда выходит новая серия аниме из «Смотрю» или «Избранное», бот присылает сообщение с кнопкой прямого открытия нужной серии в Mini App.
-- **Реализация:**
-  1. В `services/scheduler.py` формировать кнопку с Telegram WebApp deep-link (`startapp=w_{mal_id}_{episode}`).
-  2. В `static/index.html` при наличии `start_param` автоматически открывать модалку и запускать плеер указанной серии.
+## 8. Состояние разработки, эксплуатация и регламенты
 
-### 🎯 Приоритет 4 (P2): Резервный видеобалансер Kinobox
-- **Цель:** подключить Kinobox в качестве запасного источника видеопотоков для тайтлов, которых нет на AniLibria.
-- **Реализация:**
-  - Инициализация `new Kinobox('#player-container', { search: { shikimori: animeId } })` при отсутствии прямого HLS.
+### 8.1. Текущий статус готовности компонентов
+* **Backend:**
+  * Очередь Outbox и диспетчер: полностью верифицированы, покрыты 38 тестами (`notification_outbox` с `claim_token`, `claimed_at`, generation counter, recovery lease, отклонение повторного захвата активного lease воркером B).
+  * Безопасность Web API: zero-trust user ID, валидация Telegram initData HMAC-SHA256, строгая проверка типов Pydantic.
+  * Потрековый прогресс: таблица `episode_progress` с защитой от регресса и соблюдением правила 85%.
+  * HTTP-клиент: общий пул `httpx.AsyncClient`, ограничение параллельности к внешним API, поддержка Retry-After.
+  * Кэш: потокобезопасный LRU `TTLCache` с request coalescing без риска взаимных блокировок.
+  * Рекомендации: верифицированный эндпоинт `/api/recommendations` с исключениями и объяснениями.
+  * Health probes: эндпоинты `/health`, `/health/live` и `/health/ready` (проверка соединения с SQLite).
+* **Frontend (`static/index.html`):**
+  * Deep link `startapp=w_{mal_id}_{episode}` открывает карточку и стартует плеер.
+  * BackButton Telegram WebApp интегрирован с закрытием карточки и сбросом хэша.
+  * Оверлей Autoplay Policy возобновляет звук/видео в 1 клик.
+  * Навигация по сериям: диапазоны по 25 эпизодов и быстрый переход по номеру.
+  * Шеринг: канонический `startapp` URL и поддержка Stories.
+  * Стили: адаптивные отступы `safe-area-inset` и поддержка `@media (prefers-reduced-motion)`.
+* **Тестирование:**
+  * **60 автоматических тестов** в каталоге `tests/` выполняются успешно (`Ran 60 tests, OK` за ~20с).
+  * **8 сценариев в браузере с mock-SDK** проверены через headless Google Chrome (`tests/test_frontend_chrome.py`):
+    1. Script Load & Zero Uncaught Errors.
+    2. Valid Deep Link (`#w_101_3`).
+    3. Corrupted Deep Link (`#w_corrupted`).
+    4. Missing Episode Handling.
+    5. Episode Range Switch & Quick Jump to Episode 42.
+    6. Deep Link Idempotency Guard.
+    7. Close Detail Cleanup (BackButton hidden, modal hidden).
+    8. Search Sequence Token Rejection (race condition guard).
+  * Все тесты работают на временных изолированных БД в `tempfile.mkdtemp()`.
+* **Что НЕ проверялось и требует ручной проверки после запуска:**
+  * Отправка реальных пушей реальным пользователям в живой Telegram (запрещено регламентом).
+  * Поведение плеера и deep link на реальных клиентах Telegram Android, iOS и Desktop: **NOT RUN**.
+  * Физическая публикация карточки в реальные Telegram Stories: **NOT RUN** (проверялся только вызов mock-метода).
+  * Резервный балансер Kinobox: **NOT IMPLEMENTED**.
+  * Семантический поиск на эмбеддингах (ML) и Watch Party: **BLOCKED**.
 
-### 🎯 Приоритет 5 (Post-MVP): Миграция на PostgreSQL
-- **Цель:** переход с SQLite на PostgreSQL + SQLAlchemy async при росте одновременного онлайна свыше 1000 пользователей (схема и архитектура уже спроектированы).
+---
+
+### 8.2. Инструкция по резервному копированию и восстановлению базы данных
+
+Утилита `db/backup.py` использует нативный безопасный механизм `sqlite3.backup()` без блокировки пишущих транзакций (WAL-safe).
+
+```powershell
+# 1. Создание резервной копии рабочей БД:
+.\.venv\Scripts\python.exe -c "import asyncio, db.backup; asyncio.run(db.backup.create_backup('bot.db', 'backups/bot_backup.db'))"
+
+# 2. Восстановление из резервной копии:
+.\.venv\Scripts\python.exe -c "import asyncio, db.backup; asyncio.run(db.backup.restore_backup('backups/bot_backup.db', 'bot.db'))"
+```
+
+---
+
+### 8.3. Безопасная инструкция отката (Safe Rollback)
+
+> [!WARNING]
+> Никогда не используйте `git reset --hard` или удаление папок `rmdir /s tests`, чтобы не уничтожить тесты и посторонние файлы!
+
+При необходимости точечного отката изменений в рабочей директории:
+```powershell
+# Проверить список измененных файлов перед откатом:
+git status --short
+
+# Откатить только конкретный измененный файл:
+git checkout -- services/scheduler.py
+
+# Для удаления только временных артефактов без удаления тестов:
+git clean -nd  # dry-run: посмотреть, что удалится
+```
+
+---
+
+### 8.4. План перехода на PostgreSQL (Post-MVP)
+
+#### Условия старта миграции:
+1. Одновременный онлайн Mini App превышает 1000 активных пользователей.
+2. Необходимость горизонтального масштабирования (несколько инстансов `web_api.py` за балансировщиком Nginx/Caddy).
+3. Появление потребности в фоновом анализе данных без конкуренции за блокировку SQLite.
+
+#### Соответствие типов данных и схема в PostgreSQL:
+* `users`: `user_id BIGINT PRIMARY KEY`, `lang VARCHAR(10)`, `is_blocked SMALLINT DEFAULT 0`, `created_at BIGINT`.
+* `user_titles`: `user_id BIGINT`, `mal_id INTEGER`, `status VARCHAR(20)`, `current_episode INTEGER`, `is_favorite SMALLINT`, `image_url TEXT`, `updated_at BIGINT`, `PRIMARY KEY (user_id, mal_id)`.
+* `episode_progress`: `user_id BIGINT`, `mal_id INTEGER`, `episode INTEGER`, `position DOUBLE PRECISION`, `duration DOUBLE PRECISION`, `is_completed SMALLINT`, `updated_at BIGINT`, `PRIMARY KEY (user_id, mal_id, episode)`.
+* `notification_outbox`: `id BIGSERIAL PRIMARY KEY`, `user_id BIGINT`, `mal_id INTEGER`, `episode INTEGER`, `event_type VARCHAR(50)`, `payload JSONB`, `status VARCHAR(20)`, `claimed_at BIGINT`, `claim_token INTEGER DEFAULT 0`, `retry_count INTEGER`, `next_retry_at BIGINT`, `UNIQUE (user_id, mal_id, episode, event_type)`.
+* В PostgreSQL переход `status = 'pending' -> 'processing'` реализуется атомарно через `SELECT ... FOR UPDATE SKIP LOCKED`, исключая необходимость ручной эмуляции распределенного lease.
+
+#### Шаги миграции:
+1. Развернуть PostgreSQL 16+ и настроить подключение через `asyncpg` и `SQLAlchemy 2.0 (async)`.
+2. Создать DDL схемы и индексов через `Alembic`.
+3. Экспортировать данные из SQLite через скрипт стриминговой выгрузки батчами по 1000 строк.
+4. Переключить `DB_PATH` на `DATABASE_URL` в `.env`.
+
+---
+
+### 8.5. Команды контрольных проверок
+
+```powershell
+# 1. Запуск полного пакета автоматических тестов (61 тест):
+.\.venv\Scripts\python.exe -m unittest discover tests
+
+# 2. Запуск тестов очереди Outbox (39 тестов):
+.\.venv\Scripts\python.exe -m unittest tests/test_notifications.py
+
+# 3. Запуск браузерной проверки frontend в Google Chrome headless (8 сценариев):
+.\.venv\Scripts\python.exe -m unittest tests/test_frontend_chrome.py
+
+# 4. Проверка синтаксиса AST всех Python-файлов проекта:
+.\.venv\Scripts\python.exe -m compileall -q .
+
+# 5. Проверка пробелов и целостности diff:
+git diff --check
+```
+
+---
+
+### 8.6. Регламент безопасного первого запуска (Safe First Launch Guide)
+
+#### Архитектурная схема запуска:
+Приложение EnjoyAnime спроектировано как **единый процесс** (`bot.py`):
+1. **API:** Встроенный Uvicorn запускается внутри `bot.py` асинхронной задачей (`asyncio.create_task(web_server.serve())`). Запускать отдельный экземпляр Uvicorn **НЕ ТРЕБУЕТСЯ** и вредно (вызовет конфликт портов).
+2. **Порт:** Реально используется порт `settings.web_port` (по умолчанию **`8080`**, настраивается через `WEB_PORT` в `.env`).
+3. **Планировщик (Scheduler):** Запускается внутри `bot.py` (`asyncio.create_task(run_periodic_check(bot))`).
+4. **Туннель:** `bot.py` **не запускает** туннель сам. В проекте имеется готовый скрипт `tunnel.py`, который поднимает туннель (Pinggy / Cloudflare), сохраняет внешний HTTPS URL в `.env` (`WEB_APP_URL` и `MINI_APP_URL`). Функция `watch_url_changes(bot)` в `bot.py` отслеживает изменения адреса туннеля в `.env` и динамически обновляет кнопку Telegram Menu Button.
+5. **Количество процессов:** Ровно **1 процесс Python** (`bot.py`) + **1 процесс туннеля** (`python tunnel.py`).
+
+Перед первым боевым запуском выполните следующие шаги:
+
+#### Шаг 1. Определение активного пути к базе данных
+Проверьте фактический путь к SQLite БД, сконфигурированный в окружении:
+```powershell
+.\.venv\Scripts\python.exe -c "import config; print('DB Path:', config.settings.db_path)"
+```
+
+#### Шаг 2. Создание горячей резервной копии (Zero-Downtime Backup)
+Перед запуском создайте защитную копию рабочей БД через `sqlite3.backup`:
+```powershell
+.\.venv\Scripts\python.exe -c "import db.backup, config; db.backup.create_backup(config.settings.db_path, 'backups/pre_launch_backup.db'); print('Backup OK')"
+```
+
+#### Шаг 3. Проверка целостности созданного бэкапа
+Убедитесь, что резервная копия не повреждена:
+```powershell
+.\.venv\Scripts\python.exe -c "import sqlite3; conn = sqlite3.connect('backups/pre_launch_backup.db'); cur = conn.cursor(); cur.execute('PRAGMA integrity_check'); res = cur.fetchone(); print('Integrity check:', res); assert res[0] == 'ok'"
+```
+
+#### Шаг 4. Smoke-тестирование миграций на копии БД (Dry-Run)
+Проверьте применение схемы и миграций на изолированной копии перед боевой базой:
+```powershell
+.\.venv\Scripts\python.exe -c "import asyncio, shutil, db; shutil.copy('backups/pre_launch_backup.db', 'backups/test_mig.db'); asyncio.run(db.init_db('backups/test_mig.db')); print('Dry-run migration OK')"
+```
+
+#### Шаг 5. Контрольная проверка конфигурации окружения
+Проверьте корректность настроек `.env` (токен бота, туннель, порты) без раскрытия секретов:
+```powershell
+.\.venv\Scripts\python.exe -c "import config; print('Bot token configured:', bool(config.settings.bot_token)); print('Tunnel URL:', config.settings.mini_app_url); print('Web host:', config.settings.web_host); print('Web port:', config.settings.web_port); print('Dispatch disabled:', config.settings.disable_outbox_dispatch)"
+```
+
+#### Шаг 6. Штатный запуск (Single Process)
+
+##### Вариант А: Запуск первого UI-теста (с ГАРАНТИРОВАННО отключённой отправкой push)
+```powershell
+# В первом окне терминала (туннель):
+.\.venv\Scripts\python.exe tunnel.py
+
+# Во втором окне терминала (бот + API с отключенным диспетчером рассылки):
+$env:DISABLE_OUTBOX_DISPATCH="1"; .\.venv\Scripts\python.exe bot.py
+```
+
+##### Вариант Б: Штатный рабочий запуск (с активной отправкой уведомлений)
+```powershell
+# В первом окне терминала (туннель):
+.\.venv\Scripts\python.exe tunnel.py
+
+# Во втором окне терминала (бот + API + диспетчер):
+.\.venv\Scripts\python.exe bot.py
+```
+
+---
+
+### 8.7. Чек-лист ручной приёмки (Manual Acceptance Checklist)
+
+Перед включением боевой рассылки выполните ручную проверку интерфейса:
+
+- [ ] Запуск одного bot.py, без второго Uvicorn.
+- [ ] Запуск существующего механизма туннеля (`python tunnel.py`).
+- [ ] Обновление Menu Button после смены URL.
+- [ ] Открытие Mini App из меню Telegram.
+- [ ] Поиск и открытие карточки.
+- [ ] Добавление в библиотеку.
+- [ ] Избранное независимо от статуса.
+- [ ] Запуск доступного HLS-эпизода.
+- [ ] Пауза, перемотка, fullscreen.
+- [ ] Смена серии.
+- [ ] Сохранение позиции после закрытия и открытия.
+- [ ] Открытие конкретной серии по ссылке.
+- [ ] Понятное сообщение при недоступной серии.
+- [ ] BackButton.
+- [ ] Обычный шеринг ссылки.
+
+> [!NOTE]
+> Push и Stories проверяются отдельно: без реальной рассылки или публикации на этом этапе.

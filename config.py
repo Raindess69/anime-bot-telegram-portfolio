@@ -18,6 +18,18 @@ class Settings(BaseSettings):
     mini_app_url: str = Field("https://enjoyanime.app", validation_alias=AliasChoices("MINI_APP_URL", "WEB_APP_URL"))
     web_host: str = Field("0.0.0.0", alias="WEB_HOST")
     web_port: int = Field(8080, alias="WEB_PORT")
+    dev_mode: bool = Field(False, alias="DEV_MODE")
+    # Safe launch flag: disables notification outbox delivery for initial UI-only testing
+    disable_outbox_dispatch: bool = Field(False, alias="DISABLE_OUTBOX_DISPATCH")
+
+
+def mask_secret(secret: str | None) -> str:
+    """Masks secret tokens for safe diagnostic logging."""
+    if not secret:
+        return "<not set>"
+    if len(secret) <= 8:
+        return "***"
+    return f"{secret[:4]}...{secret[-4:]}"
 
 
 settings = Settings()

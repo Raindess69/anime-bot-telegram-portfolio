@@ -15,8 +15,9 @@ CREATE INDEX IF NOT EXISTS idx_search_history_user ON search_history(user_id, id
 _MAX_ENTRIES = 10
 
 
-async def init_history() -> None:
-    async with aiosqlite.connect(settings.db_path) as db:
+async def init_history(db_path: str | None = None) -> None:
+    path = db_path or settings.db_path
+    async with aiosqlite.connect(path) as db:
         await db.executescript(_SCHEMA)
         await db.commit()
 
