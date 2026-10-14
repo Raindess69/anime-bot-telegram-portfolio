@@ -13,12 +13,28 @@ from collections import OrderedDict
 from typing import Any, Callable, Coroutine
 
 
+class _InflightEntry:
+    def __init__(self, task: asyncio.Task):
+        self.task = task
+        self.waiters: set[asyncio.Future] = set()
+
+    def add_waiter(self, loop: asyncio.AbstractEventLoop) -> asyncio.Future:
+        fut = loop.create_future()
+        self.waiters.add(fut)
+        return fut
+
+    def remove_waiter(self, fut: asyncio.Future):
+        self.waiters.discard(fut)
+        if not self.waiters and not self.task.done():
+            self.task.cancel()
+
+
 class TTLCache:
     def __init__(self, ttl_seconds: int = 600, max_size: int = 500):
         self._ttl = ttl_seconds
         self._max_size = max_size
         self._store: OrderedDict[str, tuple[float, Any]] = OrderedDict()
-        self._inflight: dict[str, asyncio.Future] = {}
+        self._inflight: dict[str, _InflightEntry] = {}
         self._lock: asyncio.Lock | None = None
         self._hits = 0
         self._misses = 0
@@ -60,38 +76,64 @@ class TTLCache:
         self,
         key: str,
         coro_fn: Callable[[], Coroutine[Any, Any, Any]],
+        should_cache: Callable[[Any], bool] | None = None,
     ) -> Any:
-        """Coalesces identical concurrent requests. Only one coroutine executes; others await result."""
+        """Coalesces identical concurrent requests. Only one coroutine executes; others await result.
+
+        Guarantees:
+        - Single-flight execution for concurrent identical calls.
+        - If all callers time out or cancel, background task is cancelled cleanly and entry is popped.
+        - Never remains frozen after caller deadline expiration.
+        """
         lock = self._get_lock()
+        loop = asyncio.get_running_loop()
+
         async with lock:
             val = self._get_unlocked(key)
             if val is not None:
                 return val
 
             if key in self._inflight:
-                fut = self._inflight[key]
+                entry = self._inflight[key]
             else:
-                loop = asyncio.get_running_loop()
-                fut = loop.create_future()
-                self._inflight[key] = fut
-
                 async def _worker():
                     try:
                         computed = await coro_fn()
+                        if should_cache is None or should_cache(computed):
+                            async with lock:
+                                self._set_unlocked(key, computed)
                         async with lock:
-                            self._set_unlocked(key, computed)
-                        if not fut.done():
-                            fut.set_result(computed)
+                            cur_entry = self._inflight.get(key)
+                            if cur_entry:
+                                for w in list(cur_entry.waiters):
+                                    if not w.done():
+                                        w.set_result(computed)
+                    except asyncio.CancelledError:
+                        raise
                     except Exception as err:
-                        if not fut.done():
-                            fut.set_exception(err)
+                        async with lock:
+                            cur_entry = self._inflight.get(key)
+                            if cur_entry:
+                                for w in list(cur_entry.waiters):
+                                    if not w.done():
+                                        w.set_exception(err)
                     finally:
                         async with lock:
                             self._inflight.pop(key, None)
 
-                asyncio.create_task(_worker())
+                task = asyncio.create_task(_worker())
+                entry = _InflightEntry(task)
+                self._inflight[key] = entry
 
-        return await asyncio.shield(fut)
+            waiter = entry.add_waiter(loop)
+
+        try:
+            return await waiter
+        finally:
+            async with lock:
+                entry.remove_waiter(waiter)
+                if not entry.waiters:
+                    self._inflight.pop(key, None)
 
     async def clear(self) -> None:
         async with self._get_lock():

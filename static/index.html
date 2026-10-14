@@ -590,30 +590,7 @@
         </div>
       </div>
 
-      <!-- CUSTOM SEEKBAR & VIDEO CONTROLS (ПОЛЗУНОК ПЕРЕМОТКИ ДЛЯ HLS) -->
-      <div id="custom-player-controls" class="hidden bg-dark-850 border border-white/10 rounded-2xl p-3 space-y-2">
-        <div class="flex items-center gap-2.5">
-          <span id="player-time-current" class="text-[11px] font-mono text-slate-300 w-10 text-right">00:00</span>
-          <input type="range" id="player-seek-bar" min="0" max="100" value="0" step="0.1" class="flex-1 accent-indigo-500 h-2 bg-white/10 rounded-lg cursor-pointer">
-          <span id="player-time-total" class="text-[11px] font-mono text-slate-400 w-10">00:00</span>
-        </div>
-        <div class="flex items-center justify-between text-xs font-semibold">
-          <div class="flex items-center gap-1.5">
-            <button onclick="seekVideo(-10)" class="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-300 flex items-center gap-1 active:scale-95 transition text-[11px]">
-              ⏪ -10с
-            </button>
-            <button id="btn-player-playpause" onclick="togglePlayPause()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-white font-bold flex items-center gap-1 active:scale-95 transition shadow-glow-indigo text-[11px]">
-              <span id="btn-playpause-icon">⏸ Пауза</span>
-            </button>
-            <button onclick="seekVideo(10)" class="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-300 flex items-center gap-1 active:scale-95 transition text-[11px]">
-              +10с ⏩
-            </button>
-          </div>
-          <button onclick="toggleVideoFullscreen()" class="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-300 flex items-center gap-1 active:scale-95 transition text-[11px]">
-            ⛶ На весь экран
-          </button>
-        </div>
-      </div>
+
 
       <!-- FALLBACK SITES HUB -->
       <div id="player-fallback-card" class="bg-dark-850 border border-white/10 rounded-2xl p-4 space-y-3 hidden">
@@ -840,6 +817,10 @@
         renderCarousel('feed-popular', data.popular || []);
       } catch (e) {
         console.error('Feed error:', e);
+        const elAiring = document.getElementById('feed-airing');
+        if (elAiring) {
+          elAiring.innerHTML = '<div class="text-xs text-rose-400 py-3 flex items-center gap-2">Не удалось загрузить подборку <button onclick="loadFeed()" class="px-2.5 py-1 rounded-xl bg-indigo-600 text-white text-[11px] font-bold shadow hover:bg-indigo-500 transition">Повторить</button></div>';
+        }
       }
     }
 
@@ -1242,20 +1223,10 @@
     }
 
     let currentHls = null;
-    let isUserSeeking = false;
-
-    function formatPlayerTime(seconds) {
-      if (!seconds || isNaN(seconds) || seconds === Infinity) return '00:00';
-      const s = Math.floor(seconds);
-      const m = Math.floor(s / 60);
-      const rem = s % 60;
-      return `${m < 10 ? '0' : ''}${m}:${rem < 10 ? '0' : ''}${rem}`;
-    }
 
     function stopVideo() {
       const hlsVideo = document.getElementById('hls-video');
       const videoFrame = document.getElementById('video-frame');
-      const customControls = document.getElementById('custom-player-controls');
       const overlay = document.getElementById('player-autoplay-overlay');
       if (overlay) overlay.classList.add('hidden');
       if (hlsVideo) {
@@ -1266,9 +1237,6 @@
       if (videoFrame) {
         videoFrame.classList.add('hidden');
         videoFrame.src = '';
-      }
-      if (customControls) {
-        customControls.classList.add('hidden');
       }
       if (currentHls) {
         currentHls.destroy();
@@ -1328,7 +1296,6 @@
       const videoFrame = document.getElementById('video-frame');
       const playerContainer = document.getElementById('player-container');
       const fallbackCard = document.getElementById('player-fallback-card');
-      const customControls = document.getElementById('custom-player-controls');
       const overlay = document.getElementById('player-autoplay-overlay');
       if (overlay) overlay.classList.add('hidden');
 
@@ -1336,7 +1303,6 @@
         stopVideo();
         if (playerContainer) playerContainer.classList.add('hidden');
         if (fallbackCard) fallbackCard.classList.remove('hidden');
-        if (customControls) customControls.classList.add('hidden');
         return;
       }
 
@@ -1348,9 +1314,6 @@
         if (videoFrame) {
           videoFrame.classList.add('hidden');
           videoFrame.src = '';
-        }
-        if (customControls) {
-          customControls.classList.remove('hidden');
         }
         if (hlsVideo) {
           hlsVideo.classList.remove('hidden');
@@ -1439,94 +1402,10 @@
           hlsVideo.classList.add('hidden');
           hlsVideo.src = '';
         }
-        if (customControls) {
-          customControls.classList.add('hidden');
-        }
         if (videoFrame) {
           videoFrame.classList.remove('hidden');
           videoFrame.src = url;
         }
-      }
-    }
-
-    function initCustomPlayerControls() {
-      const hlsVideo = document.getElementById('hls-video');
-      const seekBar = document.getElementById('player-seek-bar');
-      const timeCurrent = document.getElementById('player-time-current');
-      const timeTotal = document.getElementById('player-time-total');
-      const btnPlayIcon = document.getElementById('btn-playpause-icon');
-
-      if (!hlsVideo || !seekBar) return;
-
-      hlsVideo.addEventListener('timeupdate', () => {
-        if (!isUserSeeking && hlsVideo.duration && hlsVideo.duration !== Infinity && !isNaN(hlsVideo.duration)) {
-          seekBar.value = (hlsVideo.currentTime / hlsVideo.duration) * 100;
-          timeCurrent.textContent = formatPlayerTime(hlsVideo.currentTime);
-          timeTotal.textContent = formatPlayerTime(hlsVideo.duration);
-        }
-      });
-
-      hlsVideo.addEventListener('durationchange', () => {
-        if (hlsVideo.duration && hlsVideo.duration !== Infinity && !isNaN(hlsVideo.duration)) {
-          timeTotal.textContent = formatPlayerTime(hlsVideo.duration);
-        }
-      });
-
-      hlsVideo.addEventListener('play', () => {
-        if (btnPlayIcon) btnPlayIcon.textContent = '⏸ Пауза';
-      });
-
-      hlsVideo.addEventListener('pause', () => {
-        if (btnPlayIcon) btnPlayIcon.textContent = '▶ Играть';
-      });
-
-      seekBar.addEventListener('input', () => {
-        isUserSeeking = true;
-        if (hlsVideo.duration && hlsVideo.duration !== Infinity) {
-          const target = (seekBar.value / 100) * hlsVideo.duration;
-          timeCurrent.textContent = formatPlayerTime(target);
-        }
-      });
-
-      seekBar.addEventListener('change', () => {
-        if (hlsVideo.duration && hlsVideo.duration !== Infinity) {
-          hlsVideo.currentTime = (seekBar.value / 100) * hlsVideo.duration;
-        }
-        isUserSeeking = false;
-      });
-    }
-
-    function togglePlayPause() {
-      haptic();
-      const hlsVideo = document.getElementById('hls-video');
-      if (!hlsVideo) return;
-      if (hlsVideo.paused) {
-        hlsVideo.play().catch(() => {});
-      } else {
-        hlsVideo.pause();
-      }
-    }
-
-    function seekVideo(delta) {
-      haptic();
-      const hlsVideo = document.getElementById('hls-video');
-      if (!hlsVideo) return;
-      const cur = hlsVideo.currentTime || 0;
-      const dur = (hlsVideo.duration && hlsVideo.duration !== Infinity && !isNaN(hlsVideo.duration)) ? hlsVideo.duration : cur + 60;
-      hlsVideo.currentTime = Math.max(0, Math.min(dur, cur + delta));
-    }
-
-    function toggleVideoFullscreen() {
-      haptic();
-      const container = document.getElementById('player-container');
-      const hlsVideo = document.getElementById('hls-video');
-      if (!container) return;
-      if (document.fullscreenElement) {
-        document.exitFullscreen().catch(() => {});
-      } else if (container.requestFullscreen) {
-        container.requestFullscreen().catch(() => {});
-      } else if (hlsVideo && hlsVideo.webkitEnterFullscreen) {
-        hlsVideo.webkitEnterFullscreen();
       }
     }
 
@@ -2060,7 +1939,6 @@
       loadLibrary(currentLibraryStatus);
     }
 
-    initCustomPlayerControls();
     loadFeed();
 
     async function playEpisode(animeId, episodeNum = 1) {

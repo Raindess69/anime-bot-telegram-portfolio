@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     dev_mode: bool = Field(False, alias="DEV_MODE")
     # Safe launch flag: disables notification outbox delivery for initial UI-only testing
     disable_outbox_dispatch: bool = Field(False, alias="DISABLE_OUTBOX_DISPATCH")
+    # Overall deadline budget for external feed loading in seconds
+    feed_timeout_seconds: float = Field(5.0, alias="FEED_TIMEOUT_SECONDS")
 
 
 def mask_secret(secret: str | None) -> str:

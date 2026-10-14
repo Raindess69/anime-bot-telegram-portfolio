@@ -8,9 +8,20 @@ _HEADERS = {"User-Agent": "AnimeSearchBot/1.0 (Telegram)"}
 _log = logging.getLogger(__name__)
 
 
-async def _get(path: str, params: dict | None = None) -> httpx.Response:
+async def _get(
+    path: str,
+    params: dict | None = None,
+    timeout: float | httpx.Timeout | None = None,
+    max_retries: int = 1,
+) -> httpx.Response:
     from services.http_client import request_with_retry
-    return await request_with_retry("GET", f"{BASE_URL}{path}", params=params)
+    return await request_with_retry(
+        "GET",
+        f"{BASE_URL}{path}",
+        params=params,
+        timeout=timeout,
+        max_retries=max_retries,
+    )
 
 
 def _norm_str(value) -> str | None:
@@ -21,12 +32,12 @@ def _norm_str(value) -> str | None:
     return str(value) if value else None
 
 
-async def search(query: str, limit: int = 10) -> list[dict]:
+async def search(query: str, limit: int = 10, timeout: float = 5.0) -> list[dict]:
     if not query:
         return []
     params = {"search": query, "limit": limit}
     try:
-        resp = await _get("/animes", params=params)
+        resp = await _get("/animes", params=params, timeout=timeout, max_retries=1)
         resp.raise_for_status()
     except (httpx.HTTPError, httpx.TimeoutException) as e:
         _log.warning("Shikimori search failed: %s", e)
@@ -38,7 +49,12 @@ async def search(query: str, limit: int = 10) -> list[dict]:
 _KIND_MAP = {"tv": "tv", "movie": "movie", "ova": "ova", "special": "special", "ona": "ona"}
 
 
-async def top_anime(filter_: str | None = None, type_: str | None = None, limit: int = 10) -> list[dict]:
+async def top_anime(
+    filter_: str | None = None,
+    type_: str | None = None,
+    limit: int = 10,
+    timeout: float = 4.0,
+) -> list[dict]:
     """Top-charts fallback via Shikimori /animes with order/status params."""
     fetch_limit = min(limit * 3, 50)
     params: dict[str, str | int] = {"limit": fetch_limit, "order": "ranked", "censored": "true"}
@@ -52,7 +68,7 @@ async def top_anime(filter_: str | None = None, type_: str | None = None, limit:
     if type_ and type_ in _KIND_MAP:
         params["kind"] = _KIND_MAP[type_]
     try:
-        resp = await _get("/animes", params=params)
+        resp = await _get("/animes", params=params, timeout=timeout, max_retries=1)
         resp.raise_for_status()
     except (httpx.HTTPError, httpx.TimeoutException) as e:
         _log.info("Shikimori top failed: %s", e)
@@ -66,13 +82,13 @@ async def top_anime(filter_: str | None = None, type_: str | None = None, limit:
     return valid[:limit]
 
 
-async def seasonal(year: int, season: str, limit: int = 10) -> list[dict]:
+async def seasonal(year: int, season: str, limit: int = 10, timeout: float = 4.0) -> list[dict]:
     if season not in ("winter", "spring", "summer", "fall"):
         return []
     fetch_limit = min(limit * 3, 50)
     params = {"limit": fetch_limit, "season": f"{season}_{year}", "order": "popularity", "censored": "true"}
     try:
-        resp = await _get("/animes", params=params)
+        resp = await _get("/animes", params=params, timeout=timeout, max_retries=1)
         resp.raise_for_status()
     except (httpx.HTTPError, httpx.TimeoutException) as e:
         _log.info("Shikimori seasonal failed: %s", e)
@@ -119,7 +135,7 @@ async def search_advanced(
         params["season"] = f"1970_{year_to}"
 
     try:
-        resp = await _get("/animes", params=params)
+        resp = await _get("/animes", params=params, timeout=5.0, max_retries=1)
         resp.raise_for_status()
     except (httpx.HTTPError, httpx.TimeoutException) as e:
         _log.info("Shikimori search_advanced failed: %s", e)
@@ -133,7 +149,7 @@ async def search_advanced(
     return valid[:limit]
 
 
-async def random_anime() -> dict | None:
+async def random_anime(timeout: float = 5.0) -> dict | None:
     params: dict[str, str | int] = {
         "order": "random",
         "limit": 1,
@@ -141,7 +157,7 @@ async def random_anime() -> dict | None:
         "censored": "true",
     }
     try:
-        resp = await _get("/animes", params=params)
+        resp = await _get("/animes", params=params, timeout=timeout, max_retries=1)
         resp.raise_for_status()
         items = resp.json() or []
         if not items:
@@ -149,7 +165,7 @@ async def random_anime() -> dict | None:
         item = items[0]
         shiki_id = item.get("id")
         if shiki_id:
-            full = await get_by_id(shiki_id)
+            full = await get_by_id(shiki_id, timeout=timeout)
             if full:
                 return full
         return _parse_short(item)
@@ -158,9 +174,9 @@ async def random_anime() -> dict | None:
         return None
 
 
-async def get_by_id(shikimori_id: int) -> dict | None:
+async def get_by_id(shikimori_id: int, timeout: float = 6.0) -> dict | None:
     try:
-        resp = await _get(f"/animes/{shikimori_id}")
+        resp = await _get(f"/animes/{shikimori_id}", timeout=timeout, max_retries=1)
         resp.raise_for_status()
     except (httpx.HTTPError, httpx.TimeoutException) as e:
         _log.warning("Shikimori get_by_id(%s) failed: %s", shikimori_id, e)

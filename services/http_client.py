@@ -10,22 +10,30 @@ import httpx
 _log = logging.getLogger(__name__)
 
 # Upstream domain concurrency limits to prevent rate limit violations
-_DOMAIN_LIMITS = {
-    "shikimori.one": asyncio.Semaphore(5),
-    "shikimori.io": asyncio.Semaphore(5),
-    "shikimori.me": asyncio.Semaphore(5),
-    "api.jikan.moe": asyncio.Semaphore(3),
-    "kodikapi.com": asyncio.Semaphore(5),
-    "api.anilibria.tv": asyncio.Semaphore(5),
-    "graphql.anilist.co": asyncio.Semaphore(5),
+_DOMAIN_LIMIT_VALUES = {
+    "shikimori.one": 5,
+    "shikimori.io": 5,
+    "shikimori.me": 5,
+    "api.jikan.moe": 3,
+    "kodikapi.com": 5,
+    "api.anilibria.tv": 5,
+    "graphql.anilist.co": 5,
 }
-_DEFAULT_SEMAPHORE = asyncio.Semaphore(10)
+_DEFAULT_LIMIT_VALUE = 10
 
+_semaphores: dict[tuple[int, str], asyncio.Semaphore] = {}
 _client_instance: httpx.AsyncClient | None = None
-_client_lock = asyncio.Lock()
+_client_lock: asyncio.Lock | None = None
 
-_DEFAULT_TIMEOUT = httpx.Timeout(12.0, connect=5.0, read=10.0, write=5.0)
+_DEFAULT_TIMEOUT = httpx.Timeout(8.0, connect=3.0, read=5.0, write=5.0)
 _DEFAULT_LIMITS = httpx.Limits(max_keepalive_connections=20, max_connections=50, keepalive_expiry=30.0)
+
+
+def _get_client_lock() -> asyncio.Lock:
+    global _client_lock
+    if _client_lock is None:
+        _client_lock = asyncio.Lock()
+    return _client_lock
 
 
 async def get_http_client() -> httpx.AsyncClient:
@@ -34,7 +42,8 @@ async def get_http_client() -> httpx.AsyncClient:
     if _client_instance is not None and not _client_instance.is_closed:
         return _client_instance
 
-    async with _client_lock:
+    lock = _get_client_lock()
+    async with lock:
         if _client_instance is None or _client_instance.is_closed:
             _client_instance = httpx.AsyncClient(
                 timeout=_DEFAULT_TIMEOUT,
@@ -48,7 +57,8 @@ async def get_http_client() -> httpx.AsyncClient:
 async def close_http_client() -> None:
     """Closes the shared HTTP client cleanly during shutdown."""
     global _client_instance
-    async with _client_lock:
+    lock = _get_client_lock()
+    async with lock:
         if _client_instance is not None and not _client_instance.is_closed:
             await _client_instance.aclose()
             _client_instance = None
@@ -56,10 +66,20 @@ async def close_http_client() -> None:
 
 
 def _get_semaphore(url: str) -> asyncio.Semaphore:
-    for domain, sem in _DOMAIN_LIMITS.items():
+    loop = asyncio.get_running_loop()
+    loop_id = id(loop)
+    matched_domain = "default"
+    limit_val = _DEFAULT_LIMIT_VALUE
+    for domain, val in _DOMAIN_LIMIT_VALUES.items():
         if domain in url:
-            return sem
-    return _DEFAULT_SEMAPHORE
+            matched_domain = domain
+            limit_val = val
+            break
+
+    key = (loop_id, matched_domain)
+    if key not in _semaphores:
+        _semaphores[key] = asyncio.Semaphore(limit_val)
+    return _semaphores[key]
 
 
 async def request_with_retry(
@@ -69,7 +89,7 @@ async def request_with_retry(
     params: Mapping[str, Any] | None = None,
     headers: Mapping[str, str] | None = None,
     json: Any = None,
-    max_retries: int = 2,
+    max_retries: int = 1,
     timeout: float | httpx.Timeout | None = None,
 ) -> httpx.Response:
     """Executes an HTTP request with concurrency bounds, Retry-After support, and bounded retries."""
@@ -77,6 +97,7 @@ async def request_with_retry(
     sem = _get_semaphore(url)
 
     attempt = 0
+    effective_timeout = timeout or _DEFAULT_TIMEOUT
     while True:
         attempt += 1
         try:
@@ -87,31 +108,41 @@ async def request_with_retry(
                     params=params,
                     headers=headers,
                     json=json,
-                    timeout=timeout or _DEFAULT_TIMEOUT,
+                    timeout=effective_timeout,
                 )
 
             # Check 429 Too Many Requests
-            if resp.status_code == 429 and attempt <= max_retries:
-                retry_after = resp.headers.get("Retry-After")
-                wait_sec = 2.0
-                if retry_after and retry_after.isdigit():
-                    wait_sec = min(float(retry_after), 10.0)
-                _log.warning("Rate limit on %s (429). Retrying after %.1fs (attempt %d/%d)", url, wait_sec, attempt, max_retries)
-                await asyncio.sleep(wait_sec)
-                continue
+            if resp.status_code == 429:
+                retry_after_hdr = resp.headers.get("Retry-After")
+                wait_sec = 1.0
+                if retry_after_hdr and retry_after_hdr.isdigit():
+                    wait_sec = float(retry_after_hdr)
+
+                # Never retry earlier than provider's Retry-After.
+                # If Retry-After exceeds the interactive threshold (2.0s), do not wait and do not retry early;
+                # fail fast immediately to allow callers to use fallback or cached data.
+                MAX_INTERACTIVE_RETRY_AFTER = 2.0
+                if attempt <= max_retries and wait_sec <= MAX_INTERACTIVE_RETRY_AFTER:
+                    _log.warning("Rate limit on %s (429). Retrying after %.1fs (attempt %d/%d)", url, wait_sec, attempt, max_retries)
+                    await asyncio.sleep(wait_sec)
+                    continue
+                _log.warning("Rate limit on %s (429) with Retry-After=%.1fs exceeds interactive budget. Skipping retry.", url, wait_sec)
+                return resp
 
             # Bounded retry on 502/503/504
-            if resp.status_code in (502, 503, 504) and attempt <= max_retries:
-                wait_sec = 1.0 * (2 ** (attempt - 1))
-                _log.info("Upstream error %d on %s. Retrying after %.1fs", resp.status_code, url, wait_sec)
-                await asyncio.sleep(wait_sec)
-                continue
+            if resp.status_code in (502, 503, 504):
+                if attempt <= max_retries:
+                    wait_sec = min(0.5 * (2 ** (attempt - 1)), 2.0)
+                    _log.info("Upstream error %d on %s. Retrying after %.1fs", resp.status_code, url, wait_sec)
+                    await asyncio.sleep(wait_sec)
+                    continue
+                return resp
 
             return resp
 
         except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.ConnectError) as err:
             if attempt <= max_retries:
-                wait_sec = 0.8 * attempt
+                wait_sec = min(0.3 * attempt, 1.0)
                 _log.info("Network glitch on %s (%s). Retrying after %.1fs", url, type(err).__name__, wait_sec)
                 await asyncio.sleep(wait_sec)
                 continue

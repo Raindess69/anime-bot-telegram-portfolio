@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import hmac
 import json
@@ -6,7 +7,7 @@ import os
 import time
 import urllib.parse
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 # Fix any invalid wildcards or spaces in NO_PROXY from sandbox
 for _key in ("NO_PROXY", "no_proxy"):
@@ -223,19 +224,143 @@ async def health_ready():
         raise HTTPException(status_code=503, detail=f"Database not ready: {e}")
 
 
+async def _fetch_category(filter_val: str | None, deadline: float) -> tuple[list[dict], str]:
+    """Fetches a single feed category within the remaining deadline budget with semantic fallback."""
+    now = time.monotonic()
+    remaining = deadline - now
+    if remaining <= 0.02:
+        return [], "timeout"
+
+    # Stage 1: Fast path via Shikimori (capped to 60% of remaining time or 2.5s)
+    shiki_budget = max(0.02, min(remaining * 0.6, 2.5))
+    try:
+        res = await shikimori.top_anime(filter_=filter_val, limit=12, timeout=shiki_budget)
+        if res:
+            return res, "ok"
+    except Exception as e:
+        _log.info("Shikimori top (filter=%s) failed: %s", filter_val, e)
+
+    # Stage 2: Fallback within the EXACT remaining deadline budget (does not get a new budget)
+    rem_fallback = deadline - time.monotonic()
+    if rem_fallback <= 0.02:
+        _log.info("No remaining deadline budget for fallback (filter=%s): %.2fs", filter_val, rem_fallback)
+        return [], "timeout"
+
+    try:
+        async with asyncio.timeout(rem_fallback):
+            fallback_res = await aggregator.top_anime_multi(filter_=filter_val, type_=None, limit=12)
+            if fallback_res:
+                return fallback_res, "fallback"
+            return [], "empty"
+    except (asyncio.TimeoutError, TimeoutError):
+        _log.warning("Fallback timed out for filter=%s within remaining budget", filter_val)
+        return [], "timeout"
+    except Exception as e:
+        _log.warning("Fallback crashed for filter=%s: %s", filter_val, e)
+        return [], "error"
+
+
+async def _fetch_public_feed(lang: str = "ru", budget: float | None = None) -> dict:
+    """Fetches curated public feed collections concurrently under an overall deadline budget.
+
+    Guarantees:
+    - Overall deadline budget covers all network operations (semaphores, Shikimori, retries, fallbacks).
+    - Already finished categories are preserved even if one slow category hits the deadline.
+    - Category semantics (airing, popular, top) are strictly preserved across primary and fallback sources.
+    - Unfinished tasks are cancelled cleanly without leaking in-flight futures.
+    """
+    total_budget = budget if budget is not None else settings.feed_timeout_seconds
+    deadline = time.monotonic() + total_budget
+
+    tasks = {
+        "airing": asyncio.create_task(_fetch_category("airing", deadline)),
+        "popular": asyncio.create_task(_fetch_category("bypopularity", deadline)),
+        "top": asyncio.create_task(_fetch_category(None, deadline)),
+    }
+
+    try:
+        async with asyncio.timeout(total_budget):
+            await asyncio.gather(*tasks.values(), return_exceptions=True)
+    except (asyncio.TimeoutError, TimeoutError):
+        _log.warning("Public feed overall deadline budget (%.1fs) expired; preserving partial results.", total_budget)
+
+    results: dict[str, list[dict]] = {}
+    section_status: dict[str, str] = {}
+    unavailable_sections: list[str] = []
+
+    for name, t in tasks.items():
+        if t.done() and not t.cancelled():
+            exc = t.exception()
+            if exc is None:
+                items, status = t.result()
+                results[name] = items
+                section_status[name] = status
+                if status in ("timeout", "error") or not items:
+                    unavailable_sections.append(name)
+            else:
+                _log.error("Feed task %s raised unhandled exception: %s", name, exc)
+                results[name] = []
+                section_status[name] = "error"
+                unavailable_sections.append(name)
+        else:
+            t.cancel()
+            results[name] = []
+            section_status[name] = "timeout"
+            unavailable_sections.append(name)
+
+    airing = results.get("airing", [])
+    popular = results.get("popular", [])
+    top = results.get("top", [])
+    hero = popular[0] if popular else (airing[0] if airing else (top[0] if top else None))
+
+    is_complete_failure = not (airing or popular or top)
+    feed_state = "error" if is_complete_failure else ("partial" if unavailable_sections else "ok")
+
+    return {
+        "hero": hero,
+        "airing": airing,
+        "popular": popular,
+        "top": top,
+        "feed_state": feed_state,
+        "section_status": section_status,
+        "unavailable_sections": unavailable_sections,
+    }
+
+
 @app.get("/api/feed")
 async def get_feed(
     lang: str = "ru",
     user_id: Optional[int] = None,
     user: dict = Depends(get_current_user),
 ):
-    """Returns curated collections for the main page + continue watching."""
-    try:
-        airing = await shikimori.top_anime(filter_="airing", limit=12)
-        popular = await shikimori.top_anime(filter_="bypopularity", limit=12)
-        ranked = await shikimori.top_anime(filter_=None, limit=12)
-        hero = popular[0] if popular else (airing[0] if airing else None)
+    """Returns curated collections for the main page + continue watching.
 
+    Guarantees:
+    - Bounded overall deadline budget (settings.feed_timeout_seconds).
+    - Preserves partial results if only part of collections completed within budget.
+    - Local continue_watching is returned even upon upstream source failure.
+    - Never caches total failures for 300 seconds.
+    """
+    try:
+        from utils.cache import feed_cache
+
+        cache_key = f"public_feed:{lang}"
+
+        # Only cache when feed produced at least one valid collection
+        def _should_cache_feed(data: Any) -> bool:
+            if not isinstance(data, dict):
+                return False
+            return bool(data.get("airing") or data.get("popular") or data.get("top"))
+
+        public_data = await feed_cache.get_or_compute(
+            cache_key,
+            lambda: _fetch_public_feed(lang),
+            should_cache=_should_cache_feed,
+        )
+        if not isinstance(public_data, dict):
+            public_data = await _fetch_public_feed(lang)
+
+        # Local continue watching from SQLite (local DB read, resilient to upstream failures)
         target_id = user["id"] if user.get("id") else (user_id or 0)
         continue_watching = []
         if target_id:
@@ -246,11 +371,14 @@ async def get_feed(
                 _log.warning("Continue watching fetch failed: %s", e)
 
         return {
-            "hero": hero,
+            "hero": public_data.get("hero"),
             "continue_watching": continue_watching,
-            "airing": airing,
-            "popular": popular,
-            "top": ranked,
+            "airing": public_data.get("airing", []),
+            "popular": public_data.get("popular", []),
+            "top": public_data.get("top", []),
+            "feed_state": public_data.get("feed_state", "ok"),
+            "section_status": public_data.get("section_status", {}),
+            "unavailable_sections": public_data.get("unavailable_sections", []),
         }
     except Exception as e:
         _log.exception("Feed error: %s", e)
