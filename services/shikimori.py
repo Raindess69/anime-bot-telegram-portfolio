@@ -32,6 +32,27 @@ def _norm_str(value) -> str | None:
     return str(value) if value else None
 
 
+def _is_valid_anime(raw: dict | None) -> bool:
+    """Validate anime record.
+
+    Retains title if it has a valid positive ID and at least one non-empty title.
+    Missing/null posters or descriptions do NOT invalidate the title.
+    """
+    if not isinstance(raw, dict):
+        return False
+    raw_id = raw.get("id")
+    if raw_id is None:
+        return False
+    try:
+        if int(raw_id) <= 0:
+            return False
+    except (ValueError, TypeError):
+        return False
+    title_ru = _norm_str(raw.get("russian"))
+    title_en = _norm_str(raw.get("name"))
+    return bool((title_ru and title_ru.strip()) or (title_en and title_en.strip()))
+
+
 async def search(query: str, limit: int = 10, timeout: float = 5.0) -> list[dict]:
     if not query:
         return []
@@ -42,8 +63,10 @@ async def search(query: str, limit: int = 10, timeout: float = 5.0) -> list[dict
     except (httpx.HTTPError, httpx.TimeoutException) as e:
         _log.warning("Shikimori search failed: %s", e)
         return []
-    items = resp.json()
-    return [_parse_short(x) for x in items if x]
+    items = resp.json() or []
+    if not isinstance(items, list):
+        return []
+    return [_parse_short(x) for x in items if _is_valid_anime(x)]
 
 
 _KIND_MAP = {"tv": "tv", "movie": "movie", "ova": "ova", "special": "special", "ona": "ona"}
@@ -116,7 +139,7 @@ async def top_anime_page(
     valid = [
         _parse_short(x)
         for x in raw_items
-        if x and x.get("image", {}).get("original") and "missing" not in x.get("image", {}).get("original")
+        if _is_valid_anime(x)
     ]
 
     # If upstream returned strictly fewer records than requested limit, upstream is exhausted
@@ -166,7 +189,7 @@ async def seasonal(year: int, season: str, limit: int = 10, timeout: float = 4.0
     valid = [
         _parse_short(x)
         for x in items
-        if x and x.get("image", {}).get("original") and "missing" not in x.get("image", {}).get("original")
+        if _is_valid_anime(x)
     ]
     return valid[:limit]
 
@@ -210,10 +233,12 @@ async def search_advanced(
         _log.info("Shikimori search_advanced failed: %s", e)
         return []
     items = resp.json() or []
+    if not isinstance(items, list):
+        return []
     valid = [
         _parse_short(x)
         for x in items
-        if x and x.get("image", {}).get("original") and "missing" not in x.get("image", {}).get("original")
+        if _is_valid_anime(x)
     ]
     return valid[:limit]
 
@@ -232,6 +257,8 @@ async def random_anime(timeout: float = 5.0) -> dict | None:
         if not items:
             return None
         item = items[0]
+        if not _is_valid_anime(item):
+            return None
         shiki_id = item.get("id")
         if shiki_id:
             full = await get_by_id(shiki_id, timeout=timeout)
@@ -320,9 +347,13 @@ def _parse_full(raw: dict) -> dict:
 
 
 def _image_url(raw: dict) -> str:
-    image = raw.get("image") or {}
+    if not isinstance(raw, dict):
+        return FALLBACK_POSTER_SVG
+    image = raw.get("image")
+    if not isinstance(image, dict):
+        return FALLBACK_POSTER_SVG
     url = image.get("original") or image.get("preview")
-    if not url or "missing" in url or "globals" in url:
+    if not url or not isinstance(url, str) or "missing" in url or "globals" in url:
         return FALLBACK_POSTER_SVG
     if url.startswith("https://shikimori.one/"):
         return "https://shikimori.io/" + url[len("https://shikimori.one/"):]

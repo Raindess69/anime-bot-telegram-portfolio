@@ -250,6 +250,7 @@ bash restart_bot.sh
 * **Frontend (`static/index.html`):**
   * ПК-навигация: стрелки прокрутки в заголовках каруселей, автоматический расчет границ и `disabled`, поддержка `@media (prefers-reduced-motion)`.
   * Витрина категорий: SPA-экран `#view-category`, кнопка «Показать ещё» (+24 тайтла), скелетоны, экран ошибки с повтором, защита от race conditions и спам-кликов; неполные или пустые страницы при наличии продолжения не скрывают «Показать ещё».
+  * Отказоустойчивость постеров: тайтлы без постеров не отбрасываются из каталога; фронтенд использует хелпер `safeImg` и SVG-fallback `FALLBACK_POSTER` без риска `src="undefined"`, `src="null"` или зацикливания `onerror`.
   * Плеер: штатные HTML5 video controls, чистый интерфейс без дублирующих ползунков и кнопок.
   * Deep link `startapp=w_{mal_id}_{episode}` открывает карточку и стартует плеер.
   * Иерархия навигации BackButton Telegram WebApp: Карточка -> Витрина подборки -> Главная.
@@ -259,8 +260,8 @@ bash restart_bot.sh
   * Стили: адаптивные отступы `safe-area-inset` и поддержка `@media (prefers-reduced-motion)`.
   * Локализация: полная поддержка языков `ru`, `en`, `uk`.
 * **Тестирование:**
-  * **83 автоматических теста** в каталоге `tests/` выполняются успешно (`Ran 83 tests, OK` за ~20с).
-  * **14 сценариев в браузере с mock-SDK (20 проверок)** проверены через headless Google Chrome (`tests/test_frontend_chrome.py`):
+  * **87 автоматических тестов** в каталоге `tests/` выполняются успешно (`Ran 87 tests, OK` за ~23с).
+  * **15 сценариев в браузере с mock-SDK (23 проверки)** проверены через headless Google Chrome (`tests/test_frontend_chrome.py`):
     1. Script Load & Zero Uncaught Errors.
     2. Valid Deep Link (`#w_101_3`).
     3. Corrupted Deep Link (`#w_corrupted`).
@@ -275,6 +276,7 @@ bash restart_bot.sh
     12. Double-click Guard on Load More.
     13. Category Stale Sequence Rejection on fast switch.
     14. Navigation Hierarchy (Card -> Category -> Home) & BackButton Coordination.
+    15. Fallback Poster in Card HTML, imgFallback Handler Safety & Hero/Modal Safe Posters.
   * Все тесты работают на временных изолированных БД в `tempfile.mkdtemp()`.
 * **Что НЕ проверялось и требует ручной проверки после запуска:**
   * Отправка реальных пушей реальным пользователям в живой Telegram (запрещено регламентом).

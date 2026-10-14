@@ -569,15 +569,20 @@ class TestRecommendationsAndAPI(unittest.IsolatedAsyncioTestCase):
 
         with patch("services.shikimori._get", new=AsyncMock(side_effect=_mock_get)):
             items, has_more, total = await shikimori.top_anime_page(filter_="airing", limit=24, page=1)
-            self.assertEqual(len(items), 15, "15 valid items should remain after filtering")
+            self.assertEqual(len(items), 24, "All 24 valid titles must remain with fallback posters for missing images")
             self.assertTrue(has_more, "has_more must be True when upstream page was full and page 2 exists")
+            # Verify 15 have real poster and 9 have fallback poster SVG
+            real_posters = [x for x in items if x["image_url"] != shikimori.FALLBACK_POSTER_SVG]
+            fallback_posters = [x for x in items if x["image_url"] == shikimori.FALLBACK_POSTER_SVG]
+            self.assertEqual(len(real_posters), 15)
+            self.assertEqual(len(fallback_posters), 9)
 
     async def test_shikimori_top_anime_page_subsequent_page_new_titles_and_no_skips(self):
-        """Case 2: Page 2 returns 20 distinct items with 0 ID intersection and no offset skips."""
+        """Case 2: Page 2 returns 24 distinct items with 0 ID intersection and no offset skips."""
         from services import shikimori
         from unittest.mock import MagicMock
 
-        # Page 1: 24 raw, 15 valid
+        # Page 1: 24 raw, all valid titles (15 with poster, 9 missing)
         raw_page_1 = [
             {"id": i, "name": f"Airing {i}", "russian": f"Аниме {i}", "image": {"original": "https://shiki/poster.jpg"}}
             for i in range(1, 16)
@@ -585,7 +590,7 @@ class TestRecommendationsAndAPI(unittest.IsolatedAsyncioTestCase):
             {"id": i, "name": f"Airing {i}", "russian": f"Аниме {i}", "image": {"original": "missing"}}
             for i in range(16, 25)
         ]
-        # Page 2: 24 raw (offset 24..47), 20 valid (4 missing)
+        # Page 2: 24 raw (offset 24..47), all valid titles (20 with poster, 4 missing)
         raw_page_2 = [
             {"id": i, "name": f"Airing {i}", "russian": f"Аниме {i}", "image": {"original": "https://shiki/poster.jpg"}}
             for i in range(25, 45)
@@ -618,8 +623,8 @@ class TestRecommendationsAndAPI(unittest.IsolatedAsyncioTestCase):
             ids_p1 = {x["shikimori_id"] for x in items_p1}
             ids_p2 = {x["shikimori_id"] for x in items_p2}
 
-            self.assertEqual(len(ids_p1), 15)
-            self.assertEqual(len(ids_p2), 20)
+            self.assertEqual(len(ids_p1), 24)
+            self.assertEqual(len(ids_p2), 24)
             self.assertEqual(ids_p1 & ids_p2, set(), "Page 1 and Page 2 must have zero intersecting IDs")
             self.assertTrue(has_more_p1)
             self.assertTrue(has_more_p2)
@@ -683,13 +688,13 @@ class TestRecommendationsAndAPI(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(has_more, "has_more must remain True when next-page probe times out/errors")
 
     async def test_shikimori_top_anime_page_empty_after_filter_not_end_of_catalog(self):
-        """Case 5: Empty page after local filtering does not falsely report end of catalog."""
+        """Case 5: Empty page after filtering truly invalid IDs does not falsely report end of catalog."""
         from services import aggregator, shikimori
         from unittest.mock import MagicMock
 
-        # Page 1: 24 raw items, but ALL have missing posters
+        # Page 1: 24 raw items, but ALL have truly invalid IDs (None or <= 0)
         raw_page_1 = [
-            {"id": i, "name": f"Airing {i}", "image": {"original": "missing_poster.jpg"}}
+            {"id": None, "name": f"Airing {i}", "image": {"original": "poster.jpg"}}
             for i in range(1, 25)
         ]
         raw_page_2 = [
@@ -710,7 +715,7 @@ class TestRecommendationsAndAPI(unittest.IsolatedAsyncioTestCase):
 
         with patch("services.shikimori._get", new=AsyncMock(side_effect=_mock_get)):
             items, has_more, _ = await shikimori.top_anime_page(filter_="airing", limit=24, page=1)
-            self.assertEqual(len(items), 0, "All items filtered out locally")
+            self.assertEqual(len(items), 0, "All items with invalid IDs filtered out locally")
             self.assertTrue(has_more, "has_more must be True because upstream page was full and page 2 exists")
 
             # Check aggregator level
@@ -770,6 +775,152 @@ class TestRecommendationsAndAPI(unittest.IsolatedAsyncioTestCase):
             items_page, has_more, _ = await shikimori.top_anime_page(filter_="airing", limit=10, page=1, probe_next=True)
             self.assertEqual(len(items_page), 10)
             self.assertEqual(calls, [1, 2], "top_anime_page must probe page+1 when probe_next=True")
+
+    def test_shikimori_is_valid_anime_validation_rules(self):
+        """Validate that titles with valid IDs and names are preserved regardless of poster/description."""
+        from services.shikimori import _is_valid_anime
+
+        # 1. No image block -> VALID
+        self.assertTrue(_is_valid_anime({"id": 101, "name": "Solo Leveling", "russian": "Поднятие уровня"}))
+        # 2. image = null -> VALID
+        self.assertTrue(_is_valid_anime({"id": 102, "name": "Solo Leveling 2", "image": None}))
+        # 3. image without original -> VALID
+        self.assertTrue(_is_valid_anime({"id": 103, "name": "Solo Leveling 3", "image": {"preview": "/preview.jpg"}}))
+        # 4. original contains 'missing' -> VALID
+        self.assertTrue(_is_valid_anime({"id": 104, "name": "Solo Leveling 4", "image": {"original": "/assets/missing/original.jpg"}}))
+        # 5. Correct poster -> VALID
+        self.assertTrue(_is_valid_anime({"id": 105, "name": "Solo Leveling 5", "image": {"original": "https://shikimori.one/poster.jpg"}}))
+        # 6. Title without description -> VALID
+        self.assertTrue(_is_valid_anime({"id": 106, "name": "No Description Anime", "description": None, "description_html": None}))
+        # 7. Russian title only, no english name -> VALID
+        self.assertTrue(_is_valid_anime({"id": 107, "name": None, "russian": "Только русское"}))
+        # 8. English name only, no russian -> VALID
+        self.assertTrue(_is_valid_anime({"id": 108, "name": "English Only", "russian": None}))
+
+        # Invalid cases: truly invalid ID (None, <=0, non-integer) or empty titles -> REJECT
+        self.assertFalse(_is_valid_anime({"id": None, "name": "Invalid ID"}))
+        self.assertFalse(_is_valid_anime({"id": 0, "name": "Zero ID"}))
+        self.assertFalse(_is_valid_anime({"id": -10, "name": "Negative ID"}))
+        self.assertFalse(_is_valid_anime({"id": "not_an_int", "name": "String ID"}))
+        self.assertFalse(_is_valid_anime({"id": 109, "name": "", "russian": ""}))
+        self.assertFalse(_is_valid_anime({"id": 110, "name": "   ", "russian": "\t\n"}))
+        self.assertFalse(_is_valid_anime(None))
+        self.assertFalse(_is_valid_anime("not a dict"))
+        self.assertFalse(_is_valid_anime([]))
+
+    def test_shikimori_image_url_normalization_and_fallback(self):
+        """Verify normalization of poster URLs and fallback SVG generation."""
+        from services.shikimori import _image_url, FALLBACK_POSTER_SVG
+
+        # Missing or null image
+        self.assertEqual(_image_url({}), FALLBACK_POSTER_SVG)
+        self.assertEqual(_image_url({"image": None}), FALLBACK_POSTER_SVG)
+        self.assertEqual(_image_url({"image": {}}), FALLBACK_POSTER_SVG)
+        self.assertEqual(_image_url({"image": {"original": None, "preview": None}}), FALLBACK_POSTER_SVG)
+        self.assertEqual(_image_url({"image": {"original": "https://shikimori.one/assets/missing/original.jpg"}}), FALLBACK_POSTER_SVG)
+        self.assertEqual(_image_url({"image": {"original": "/assets/globals/missing.jpg"}}), FALLBACK_POSTER_SVG)
+
+        # Domain rewriting shikimori.one -> shikimori.io
+        self.assertEqual(
+            _image_url({"image": {"original": "https://shikimori.one/system/animes/original/1.jpg"}}),
+            "https://shikimori.io/system/animes/original/1.jpg"
+        )
+        self.assertEqual(
+            _image_url({"image": {"original": "http://shikimori.one/system/animes/original/2.jpg"}}),
+            "https://shikimori.io/system/animes/original/2.jpg"
+        )
+
+        # Relative path gets prefixed with https://shikimori.io
+        self.assertEqual(
+            _image_url({"image": {"original": "/system/animes/original/3.jpg"}}),
+            "https://shikimori.io/system/animes/original/3.jpg"
+        )
+
+        # Other external absolute URL preserved
+        self.assertEqual(
+            _image_url({"image": {"original": "https://cdn.myanimelist.net/images/anime/4.jpg"}}),
+            "https://cdn.myanimelist.net/images/anime/4.jpg"
+        )
+
+    async def test_shikimori_top_anime_page_24_valid_titles_with_14_missing_posters_returns_all_24(self):
+        """Diagnosed scenario: 24 raw items with 14 missing posters must return ALL 24, not 10."""
+        from services import shikimori
+        from unittest.mock import MagicMock
+
+        # 10 items with valid posters, 14 with various missing poster formats
+        raw_items = [
+            {"id": i, "name": f"Valid Poster Anime {i}", "image": {"original": f"https://shiki/poster_{i}.jpg"}}
+            for i in range(1, 11)
+        ] + [
+            # 5 items with "missing" in original
+            {"id": i, "name": f"Missing URL Anime {i}", "image": {"original": "https://shiki/assets/missing/original.jpg"}}
+            for i in range(11, 16)
+        ] + [
+            # 5 items with image = None
+            {"id": i, "name": f"Null Image Anime {i}", "image": None}
+            for i in range(16, 21)
+        ] + [
+            # 4 items with empty image dict
+            {"id": i, "name": f"Empty Image Anime {i}", "image": {}}
+            for i in range(21, 25)
+        ]
+        self.assertEqual(len(raw_items), 24)
+
+        mock_resp = MagicMock()
+        mock_resp.is_success = True
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = raw_items
+
+        with patch("services.shikimori._get", new=AsyncMock(return_value=mock_resp)):
+            items, has_more, total = await shikimori.top_anime_page(filter_="airing", limit=24, page=1, probe_next=False)
+
+            # Must return all 24 items, NOT 10!
+            self.assertEqual(len(items), 24, f"Expected 24 items, got {len(items)}")
+
+            # 10 items have valid external poster URLs
+            valid_posters = [x for x in items if x["image_url"] != shikimori.FALLBACK_POSTER_SVG]
+            self.assertEqual(len(valid_posters), 10)
+
+            # 14 items have FALLBACK_POSTER_SVG
+            fallback_posters = [x for x in items if x["image_url"] == shikimori.FALLBACK_POSTER_SVG]
+            self.assertEqual(len(fallback_posters), 14)
+
+            # None have undefined, null or empty strings
+            for x in items:
+                self.assertIsNotNone(x["image_url"])
+                self.assertNotIn(x["image_url"], ["undefined", "null", ""])
+
+    async def test_shikimori_search_and_seasonal_preserve_posterless_titles(self):
+        """Verify search, seasonal and search_advanced also retain titles without posters."""
+        from services import shikimori
+        from unittest.mock import MagicMock
+
+        raw_items = [
+            {"id": 1, "name": "Has Poster", "image": {"original": "https://shiki/p1.jpg"}},
+            {"id": 2, "name": "No Poster", "image": {"original": "missing"}},
+            {"id": 3, "name": "Null Poster", "image": None},
+        ]
+        mock_resp = MagicMock()
+        mock_resp.is_success = True
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = raw_items
+
+        with patch("services.shikimori._get", new=AsyncMock(return_value=mock_resp)):
+            # Search
+            search_res = await shikimori.search("test", limit=10)
+            self.assertEqual(len(search_res), 3)
+            self.assertEqual(search_res[1]["image_url"], shikimori.FALLBACK_POSTER_SVG)
+            self.assertEqual(search_res[2]["image_url"], shikimori.FALLBACK_POSTER_SVG)
+
+            # Seasonal
+            seasonal_res = await shikimori.seasonal(2026, "spring", limit=10)
+            self.assertEqual(len(seasonal_res), 3)
+            self.assertEqual(seasonal_res[1]["image_url"], shikimori.FALLBACK_POSTER_SVG)
+
+            # Search advanced
+            adv_res = await shikimori.search_advanced(limit=10)
+            self.assertEqual(len(adv_res), 3)
+            self.assertEqual(adv_res[1]["image_url"], shikimori.FALLBACK_POSTER_SVG)
 
 
 if __name__ == "__main__":

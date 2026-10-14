@@ -316,6 +316,42 @@ class MockTMAHandler(http.server.BaseHTTPRequestHandler):
                 assert("14. Navigation Hierarchy", false, String(e));
               }
 
+              // Test 15: Fallback poster rendering and error resilience
+              try {
+                // Test 15.1: renderCardHTML with null/undefined/missing image_url
+                const testCards = [
+                  { mal_id: 801, title_ru: "No Poster Item", image_url: null },
+                  { mal_id: 802, title_ru: "Empty Poster Item", image_url: "" },
+                  { mal_id: 803, title_ru: "Undefined Poster Item" },
+                  { mal_id: 804, title_ru: "Str Null Item", image_url: "null" },
+                  { mal_id: 805, title_ru: "Str Undefined Item", image_url: "undefined" },
+                ];
+                const renderedHtml = testCards.map(c => renderCardHTML(c)).join('');
+                const hasUndefinedSrc = renderedHtml.includes('src="undefined"');
+                const hasNullSrc = renderedHtml.includes('src="null"');
+                const hasFallbackPoster = renderedHtml.includes('data:image/svg+xml');
+                assert("15.1 Fallback Poster in Card HTML", !hasUndefinedSrc && !hasNullSrc && hasFallbackPoster, "Card rendered with invalid src or missing fallback SVG");
+
+                // Test 15.2: imgFallback handler execution without loop or crash
+                const dummyImg = document.createElement('img');
+                let onerrorCleared = false;
+                dummyImg.onerror = function() { imgFallback(this); };
+                dummyImg.onerror();
+                onerrorCleared = (dummyImg.onerror === null) && (dummyImg.src.includes('data:image/svg+xml'));
+                assert("15.2 imgFallback Handler Safety", onerrorCleared, "imgFallback did not clear onerror handler or set fallback SVG");
+
+                // Test 15.3: Hero and Modal poster safety
+                const heroImg = document.getElementById('hero-img');
+                heroImg.src = safeImg(null);
+                const heroSafe = heroImg.src.includes('data:image/svg+xml') && !heroImg.src.includes('null');
+                const posterEl = document.getElementById('modal-poster');
+                posterEl.src = safeImg(undefined);
+                const modalSafe = posterEl.src.includes('data:image/svg+xml') && !posterEl.src.includes('undefined');
+                assert("15.3 Hero and Modal Safe Posters", heroSafe && modalSafe, "safeImg failed for hero or modal poster");
+              } catch(e) {
+                assert("15. Fallback Poster Resilience", false, String(e));
+              }
+
               // Write results to container for Chrome --dump-dom extraction
               const el = document.getElementById('chrome-test-suite-results');
               el.innerText = JSON.stringify(results);
