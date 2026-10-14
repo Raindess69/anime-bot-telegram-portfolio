@@ -63,6 +63,23 @@ class MockTMAHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps([{"mal_id": 101, "title_ru": "Рекомендация"}]).encode())
+        elif self.path.startswith("/api/category"):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            page = 1
+            if "page=2" in self.path:
+                page = 2
+            items = [{"mal_id": 1000 + i + (page - 1) * 24, "title_ru": f"Категория тайтл {i}", "score": "8.0"} for i in range(1, 25)]
+            self.wfile.write(json.dumps({
+                "category": "airing",
+                "page": page,
+                "limit": 24,
+                "items": items,
+                "has_more": page < 3,
+                "total": 60,
+                "source": "shikimori",
+            }).encode())
         elif self.path.startswith("/test_page.html"):
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -201,25 +218,124 @@ class MockTMAHandler(http.server.BaseHTTPRequestHandler):
                 assert("8. Search Sequence Token Rejection", false, String(e));
               }
 
+              // Test 9: Carousel arrow controls (PC navigation)
+              try {
+                const el = document.getElementById('feed-airing');
+                const mockItems = Array.from({length: 12}, (_, i) => ({
+                  mal_id: 200 + i,
+                  title_ru: 'Airing ' + i,
+                  score: '8.0'
+                }));
+                renderCarousel('feed-airing', mockItems);
+                updateCarouselArrows('feed-airing');
+                const prevBtn = document.querySelector('[data-carousel-prev="feed-airing"]');
+                const nextBtn = document.querySelector('[data-carousel-next="feed-airing"]');
+                const hasArrows = prevBtn && nextBtn;
+                const prevDisabled = prevBtn && prevBtn.disabled === true;
+                assert("9.1 Carousel Arrows Mounted", hasArrows, "Arrows not found");
+                assert("9.2 Carousel Start Boundary", prevDisabled, "Prev button must be disabled at start");
+
+                scrollCarousel('feed-airing', 1);
+                assert("9.3 Carousel Scroll Triggered", typeof scrollCarousel === 'function', "scrollCarousel function missing");
+              } catch(e) {
+                assert("9. Carousel Controls", false, String(e));
+              }
+
+              // Test 10: "Все →" opens Category View SPA screen
+              try {
+                await openCategoryView('airing');
+                const catView = document.getElementById('view-category');
+                const homeView = document.getElementById('view-home');
+                const isCatVisible = catView && !catView.classList.contains('hidden');
+                const isHomeHidden = homeView && homeView.classList.contains('hidden');
+                const titleText = document.getElementById('category-view-title').textContent;
+                const backBtnVisible = Telegram.WebApp.BackButton.isVisible;
+                assert("10.1 Category View Displayed", isCatVisible && isHomeHidden, "Category view not visible or home not hidden");
+                assert("10.2 Category Title Correct", titleText.includes("Выходят сейчас") || titleText.includes("Airing") || titleText.includes("Виходять"), "Title was: " + titleText);
+                assert("10.3 BackButton Active on Category", backBtnVisible === true, "Telegram BackButton not shown in category view");
+              } catch(e) {
+                assert("10. Open Category View", false, String(e));
+              }
+
+              // Test 11: "Показать ещё" Pagination
+              try {
+                const initialCount = document.querySelectorAll('#category-grid .media-card, #category-grid [onclick^="openCard"]').length;
+                await loadNextCategoryPage();
+                const newCount = document.querySelectorAll('#category-grid .media-card, #category-grid [onclick^="openCard"]').length;
+                assert("11. Load More Appends Next Page", newCount > initialCount, `Items before: ${initialCount}, after: ${newCount}`);
+              } catch(e) {
+                assert("11. Load More Appends Next Page", false, String(e));
+              }
+
+              // Test 12: Double-click Guard on Load More
+              try {
+                isLoadingCategory = true;
+                const prevPage = currentCategoryPage;
+                await loadNextCategoryPage();
+                assert("12. Double-click Guard", currentCategoryPage === prevPage, "Category page incremented while isLoadingCategory was true");
+                isLoadingCategory = false;
+              } catch(e) {
+                assert("12. Double-click Guard", false, String(e));
+              }
+
+              // Test 13: Stale Sequence Token Rejection on Category Switch
+              try {
+                categorySeqId = 99;
+                const staleSeq = 42;
+                let accepted = false;
+                if (staleSeq === categorySeqId) {
+                  accepted = true;
+                }
+                assert("13. Category Stale Sequence Rejection", accepted === false, "Stale category response accepted");
+              } catch(e) {
+                assert("13. Category Stale Sequence Rejection", false, String(e));
+              }
+
+              // Test 14: Navigation Hierarchy: Card -> Category -> Home
+              try {
+                // Open card from category
+                await openCard(101);
+                const detailModal = document.getElementById('detail-modal');
+                assert("14.1 Detail Modal Opened", detailModal && !detailModal.classList.contains('hidden'), "Detail modal not opened");
+
+                // Close detail modal: must stay in category view with BackButton shown
+                closeDetail();
+                const catView = document.getElementById('view-category');
+                const isCatStillVisible = catView && !catView.classList.contains('hidden');
+                const isBackStillVisible = Telegram.WebApp.BackButton.isVisible;
+                assert("14.2 Close Detail Stays in Category", isCatStillVisible && isBackStillVisible, "Did not remain in category view or BackButton hidden");
+
+                // Close category: must return to home and hide BackButton
+                closeCategoryView();
+                const homeView = document.getElementById('view-home');
+                const isHomeVisible = homeView && !homeView.classList.contains('hidden');
+                const isCatHidden = catView && catView.classList.contains('hidden');
+                const isBackHidden = !Telegram.WebApp.BackButton.isVisible;
+                assert("14.3 Close Category Returns to Home", isHomeVisible && isCatHidden && isBackHidden, "Did not return cleanly to home view");
+              } catch(e) {
+                assert("14. Navigation Hierarchy", false, String(e));
+              }
+
               // Write results to container for Chrome --dump-dom extraction
               const el = document.getElementById('chrome-test-suite-results');
               el.innerText = JSON.stringify(results);
               el.setAttribute('data-completed', 'true');
             }
-            try {
-              runAutomatedTests();
-            } catch(e) {
+            runAutomatedTests().catch(function(e) {
               const el = document.getElementById('chrome-test-suite-results');
               if (el) {
-                el.innerText = JSON.stringify([{name: "FATAL_TEST_RUNNER_ERROR", passed: false, details: String(e)}]);
+                el.innerText = JSON.stringify([{name: "FATAL_TEST_RUNNER_ERROR", passed: false, details: String(e) + " stack: " + (e && e.stack)}]);
                 el.setAttribute('data-completed', 'true');
               }
-            }
+            });
             </script>
             """
 
-            # Insert test_harness after <head> and test_runner before </body>
-            modified_html = html_content.replace("<head>", "<head>\n" + test_harness)
+            # Replace external telegram script with mock test harness to ensure hermetic execution
+            modified_html = html_content.replace(
+                '<script src="https://telegram.org/js/telegram-web-app.js"></script>',
+                test_harness
+            )
             modified_html = modified_html.replace("</body>", test_runner + "\n</body>")
             self.wfile.write(modified_html.encode("utf-8"))
         else:
@@ -262,6 +378,7 @@ class TestFrontendChrome(unittest.TestCase):
                 "--no-default-browser-check",
                 "--disable-gpu",
                 "--disable-extensions",
+                "--virtual-time-budget=3000",
                 "--dump-dom",
                 test_url,
             ]

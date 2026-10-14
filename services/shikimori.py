@@ -53,11 +53,17 @@ async def top_anime(
     filter_: str | None = None,
     type_: str | None = None,
     limit: int = 10,
+    page: int = 1,
     timeout: float = 4.0,
 ) -> list[dict]:
     """Top-charts fallback via Shikimori /animes with order/status params."""
-    fetch_limit = min(limit * 3, 50)
-    params: dict[str, str | int] = {"limit": fetch_limit, "order": "ranked", "censored": "true"}
+    fetch_limit = min(max(limit, 50 if limit > 25 else limit * 2), 50)
+    params: dict[str, str | int] = {
+        "limit": fetch_limit,
+        "page": page,
+        "order": "ranked",
+        "censored": "true",
+    }
     if filter_ == "airing":
         params["status"] = "ongoing"
         params["order"] = "popularity"

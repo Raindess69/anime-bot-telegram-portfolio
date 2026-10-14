@@ -155,8 +155,13 @@ async def search_advanced(
     return [_parse_item(x) for x in data if x]
 
 
-async def top_anime(filter_: str | None = None, type_: str | None = None, limit: int = 10) -> list[dict]:
-    params: dict[str, str | int] = {"limit": limit, "sfw": "true"}
+async def top_anime(
+    filter_: str | None = None,
+    type_: str | None = None,
+    limit: int = 10,
+    page: int = 1,
+) -> list[dict]:
+    params: dict[str, str | int] = {"limit": limit, "page": page, "sfw": "true"}
     if filter_ and filter_ in VALID_TOP_FILTERS:
         params["filter"] = filter_
     if type_ and type_ in VALID_TYPES:

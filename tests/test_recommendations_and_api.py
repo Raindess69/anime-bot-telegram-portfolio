@@ -364,6 +364,176 @@ class TestRecommendationsAndAPI(unittest.IsolatedAsyncioTestCase):
         # In-flight map must not leak or stay frozen
         self.assertNotIn("timeout_key", cache._inflight, "In-flight task must be removed after error")
 
+    async def test_category_endpoint_validation(self):
+        """Verify /api/category/{category} validates allowed category and page/limit bounds."""
+        from httpx import ASGITransport, AsyncClient
+        from web_api import app
+
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            # Invalid category
+            resp = await client.get("/api/category/unknown_category")
+            self.assertEqual(resp.status_code, 400)
+            self.assertIn("Invalid category", resp.json()["detail"])
+
+            # Invalid page bounds (page < 1)
+            resp = await client.get("/api/category/airing?page=0")
+            self.assertEqual(resp.status_code, 422)
+
+            # Invalid limit bounds (limit > 50)
+            resp = await client.get("/api/category/airing?limit=51")
+            self.assertEqual(resp.status_code, 422)
+
+    async def test_category_semantics_and_parameters(self):
+        """Verify category endpoint passes correct filter parameters to aggregator."""
+        from httpx import ASGITransport, AsyncClient
+        from web_api import app
+
+        sample_items = [{"id": 1, "mal_id": 1, "title_ru": "Anime 1", "score": "8.0"}]
+        mock_get_page = AsyncMock(return_value={
+            "category": "airing",
+            "page": 1,
+            "limit": 24,
+            "items": sample_items,
+            "has_more": True,
+            "total": None,
+            "source": "shikimori",
+        })
+
+        with patch("services.aggregator.get_category_page", new=mock_get_page):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                resp = await client.get("/api/category/airing?page=2&limit=24")
+                self.assertEqual(resp.status_code, 200)
+                data = resp.json()
+                self.assertEqual(data["category"], "airing")
+                mock_get_page.assert_awaited_once_with(
+                    category="airing",
+                    page=2,
+                    limit=24,
+                    preferred_source=None,
+                    timeout=5.0,
+                )
+
+    async def test_category_cache_keys_distinct_by_page_limit_lang_source(self):
+        """Verify different page, limit, lang, and source parameters produce distinct cache entries."""
+        from utils.cache import category_cache
+        from httpx import ASGITransport, AsyncClient
+        from web_api import app
+
+        await category_cache.clear()
+
+        call_args = []
+        async def _mock_page(category, page, limit, preferred_source, timeout):
+            call_args.append((category, page, limit, preferred_source))
+            return {
+                "category": category,
+                "page": page,
+                "limit": limit,
+                "items": [{"id": page, "mal_id": page, "title_ru": f"{category}-{page}-{limit}-{preferred_source}"}],
+                "has_more": True,
+                "total": None,
+                "source": preferred_source or "shikimori",
+            }
+
+        with patch("services.aggregator.get_category_page", side_effect=_mock_page):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                r1 = await client.get("/api/category/popular?page=1&limit=24&lang=ru")
+                r2 = await client.get("/api/category/popular?page=2&limit=24&lang=ru")
+                r3 = await client.get("/api/category/popular?page=1&limit=12&lang=ru")  # distinct limit
+                r4 = await client.get("/api/category/popular?page=1&limit=24&lang=en")  # distinct lang
+                r5 = await client.get("/api/category/popular?page=1&limit=24&lang=ru&source=jikan")  # distinct source
+                r6 = await client.get("/api/category/popular?page=1&limit=24&lang=ru")  # cache hit of r1
+
+                self.assertEqual(r1.status_code, 200)
+                self.assertEqual(r2.status_code, 200)
+                self.assertEqual(r3.status_code, 200)
+                self.assertEqual(r4.status_code, 200)
+                self.assertEqual(r5.status_code, 200)
+                self.assertEqual(r6.status_code, 200)
+
+                # r1 and r6 share key ('popular', 1, 24, None) -> called once
+                self.assertEqual(call_args, [
+                    ("popular", 1, 24, None),
+                    ("popular", 2, 24, None),
+                    ("popular", 1, 12, None),
+                    ("popular", 1, 24, None),  # lang=en produces separate cache key
+                    ("popular", 1, 24, "jikan"),
+                ])
+
+    async def test_category_upstream_failure_not_cached(self):
+        """Verify upstream errors raise 502 and are not cached."""
+        from utils.cache import category_cache
+        from httpx import ASGITransport, AsyncClient
+        from web_api import app
+
+        await category_cache.clear()
+
+        call_count = 0
+        async def _mock_flaky(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise RuntimeError("Temporary upstream crash")
+            return {
+                "category": "top",
+                "page": 1,
+                "limit": 24,
+                "items": [{"id": 10, "mal_id": 10, "title_ru": "Top Anime"}],
+                "has_more": False,
+                "total": 10,
+                "source": "anilist",
+            }
+
+        with patch("services.aggregator.get_category_page", side_effect=_mock_flaky):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as client:
+                r1 = await client.get("/api/category/top?page=1")
+                self.assertEqual(r1.status_code, 502)
+
+                # Verify not cached
+                self.assertEqual(len(category_cache._store), 0)
+
+                # 2nd call retries and succeeds
+                r2 = await client.get("/api/category/top?page=1")
+                self.assertEqual(r2.status_code, 200)
+                self.assertEqual(r2.json()["items"][0]["id"], 10)
+
+    async def test_category_provider_pinning_and_deduplication(self):
+        """Verify preferred_source pins the provider and deduplicates items by ID."""
+        from services import aggregator
+
+        raw_with_duplicates = [
+            {"id": 101, "shikimori_id": 101, "mal_id": 101, "title_ru": "Anime A"},
+            {"id": 102, "shikimori_id": 102, "mal_id": 102, "title_ru": "Anime B"},
+            {"id": 101, "shikimori_id": 101, "mal_id": 101, "title_ru": "Anime A Duplicate"},
+        ]
+
+        with patch("services.shikimori.top_anime", new=AsyncMock(return_value=raw_with_duplicates)), \
+             patch("services.jikan.top_anime", new=AsyncMock(return_value=[{"id": 999}])):
+            # Initial page
+            res = await aggregator.get_category_page(
+                category="airing",
+                page=1,
+                limit=24,
+                preferred_source="shikimori",
+            )
+            self.assertEqual(res["source"], "shikimori")
+            self.assertEqual(len(res["items"]), 2, "Duplicate item 101 must be deduplicated")
+            self.assertEqual([x["id"] for x in res["items"]], [101, 102])
+
+            # If preferred_source fails, does NOT query jikan
+            with patch("services.shikimori.top_anime", side_effect=RuntimeError("Shiki down")):
+                res_failed = await aggregator.get_category_page(
+                    category="airing",
+                    page=2,
+                    limit=24,
+                    preferred_source="shikimori",
+                )
+                self.assertEqual(res_failed["items"], [])
+                self.assertIsNone(res_failed["source"], "Must not switch provider when pinned")
+
 
 if __name__ == "__main__":
     unittest.main()

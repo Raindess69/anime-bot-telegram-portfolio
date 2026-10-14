@@ -26,7 +26,12 @@ def _uk_to_ru_like(text: str) -> str:
     return (text or "").translate(_UK_TO_RU_LIKE)
 
 
-async def top_anime_multi(filter_: str | None, type_: str | None, limit: int) -> list[dict]:
+async def top_anime_multi(
+    filter_: str | None,
+    type_: str | None,
+    limit: int,
+    page: int = 1,
+) -> list[dict]:
     """Top charts with source fallback: Jikan → AniList → Shikimori.
 
     Jikan (MAL) sometimes disconnects mid-response; when it does, retries in
@@ -36,9 +41,9 @@ async def top_anime_multi(filter_: str | None, type_: str | None, limit: int) ->
     consume them uniformly.
     """
     for source_name, fn in (
-        ("jikan", lambda: jikan.top_anime(filter_=filter_, type_=type_, limit=limit)),
-        ("anilist", lambda: anilist.top_anime(filter_=filter_, type_=type_, limit=limit)),
-        ("shikimori", lambda: shikimori.top_anime(filter_=filter_, type_=type_, limit=limit)),
+        ("jikan", lambda: jikan.top_anime(filter_=filter_, type_=type_, limit=limit, page=page)),
+        ("anilist", lambda: anilist.top_anime(filter_=filter_, type_=type_, limit=limit, page=page)),
+        ("shikimori", lambda: shikimori.top_anime(filter_=filter_, type_=type_, limit=limit, page=page)),
     ):
         try:
             result = await fn()
@@ -50,6 +55,120 @@ async def top_anime_multi(filter_: str | None, type_: str | None, limit: int) ->
             return result
         _log.info("Top source %s returned empty — trying next", source_name)
     return []
+
+
+async def get_category_page(
+    category: str,
+    page: int = 1,
+    limit: int = 24,
+    preferred_source: str | None = None,
+    timeout: float = 5.0,
+) -> dict:
+    """Fetches a paginated category catalog with strict category semantics and provider pinning.
+
+    Supported categories:
+    - 'airing': strictly currently airing ongoing series
+    - 'popular': sorted by popularity
+    - 'top': sorted by score/rank
+
+    Guarantees:
+    - Never mixes different providers across pages when preferred_source is pinned.
+    - Preserves canonical mal_id / shikimori_id deduplication.
+    - Only includes total if verified authoritative from source.
+    """
+    if category not in ("airing", "popular", "top"):
+        raise ValueError(f"Invalid category: {category}")
+
+    filter_map = {
+        "airing": "airing",
+        "popular": "bypopularity",
+        "top": None,
+    }
+    filter_val = filter_map[category]
+
+    async def _try_shikimori(to: float) -> tuple[list[dict], bool, int | None] | None:
+        try:
+            items = await shikimori.top_anime(filter_=filter_val, limit=limit, page=page, timeout=to)
+            if items:
+                return items, len(items) >= limit, None
+        except Exception as e:
+            _log.info("Shikimori category page failed: %s", e)
+        return None
+
+    async def _try_jikan() -> tuple[list[dict], bool, int | None] | None:
+        try:
+            items = await jikan.top_anime(filter_=filter_val, limit=limit, page=page)
+            if items:
+                return items, len(items) >= limit, None
+        except Exception as e:
+            _log.info("Jikan category page failed: %s", e)
+        return None
+
+    async def _try_anilist() -> tuple[list[dict], bool, int | None] | None:
+        try:
+            items, has_more, total = await anilist.top_anime_page(filter_=filter_val, limit=limit, page=page)
+            if items:
+                return items, has_more, total
+        except Exception as e:
+            _log.info("AniList category page failed: %s", e)
+        return None
+
+    selected_source: str | None = None
+    raw_result: tuple[list[dict], bool, int | None] | None = None
+
+    if preferred_source:
+        # Enforce provider pinning: never silently switch provider on subsequent pages
+        if preferred_source == "shikimori":
+            raw_result = await _try_shikimori(timeout)
+            if raw_result:
+                selected_source = "shikimori"
+        elif preferred_source == "jikan":
+            raw_result = await _try_jikan()
+            if raw_result:
+                selected_source = "jikan"
+        elif preferred_source == "anilist":
+            raw_result = await _try_anilist()
+            if raw_result:
+                selected_source = "anilist"
+    else:
+        # Initial page: prioritize Shikimori, fallback to Jikan then AniList
+        shiki_to = max(0.5, min(timeout * 0.6, 2.5))
+        raw_result = await _try_shikimori(shiki_to)
+        if raw_result:
+            selected_source = "shikimori"
+        else:
+            raw_result = await _try_jikan()
+            if raw_result:
+                selected_source = "jikan"
+            else:
+                raw_result = await _try_anilist()
+                if raw_result:
+                    selected_source = "anilist"
+
+    items: list[dict] = []
+    has_more = False
+    total: int | None = None
+
+    if raw_result:
+        raw_items, has_more, total = raw_result
+        seen_ids: set[int] = set()
+        for it in raw_items:
+            cid = it.get("shikimori_id") or it.get("mal_id") or it.get("id")
+            if cid:
+                if cid in seen_ids:
+                    continue
+                seen_ids.add(cid)
+            items.append(it)
+
+    return {
+        "category": category,
+        "page": page,
+        "limit": limit,
+        "items": items,
+        "has_more": has_more,
+        "total": total,
+        "source": selected_source,
+    }
 
 
 async def random_anime() -> dict | None:

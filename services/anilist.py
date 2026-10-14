@@ -97,8 +97,12 @@ query ($perPage: Int, $genre_in: [String], $format: MediaFormat, $startDate_grea
 """
 
 _TOP_QUERY = """
-query ($perPage: Int, $sort: [MediaSort], $status: MediaStatus, $format: MediaFormat, $season: MediaSeason, $seasonYear: Int) {
-  Page(page: 1, perPage: $perPage) {
+query ($page: Int, $perPage: Int, $sort: [MediaSort], $status: MediaStatus, $format: MediaFormat, $season: MediaSeason, $seasonYear: Int) {
+  Page(page: $page, perPage: $perPage) {
+    pageInfo {
+      total
+      hasNextPage
+    }
     media(type: ANIME, sort: $sort, status: $status, format: $format, season: $season, seasonYear: $seasonYear, isAdult: false) {
       idMal
       title { romaji english native }
@@ -262,9 +266,25 @@ async def get_streams_by_mal(mal_ids: list[int]) -> dict[int, dict[str, str]]:
     return result
 
 
-async def top_anime(filter_: str | None = None, type_: str | None = None, limit: int = 10) -> list[dict]:
+async def top_anime(
+    filter_: str | None = None,
+    type_: str | None = None,
+    limit: int = 10,
+    page: int = 1,
+) -> list[dict]:
     """Top-charts fallback: Jikan's filter names → AniList sort/status/format variables."""
-    variables: dict[str, object] = {"perPage": limit}
+    items, _, _ = await top_anime_page(filter_=filter_, type_=type_, limit=limit, page=page)
+    return items
+
+
+async def top_anime_page(
+    filter_: str | None = None,
+    type_: str | None = None,
+    limit: int = 10,
+    page: int = 1,
+) -> tuple[list[dict], bool, int | None]:
+    """Top-charts with pagination metadata from AniList."""
+    variables: dict[str, object] = {"perPage": limit, "page": page}
     if filter_ == "airing":
         variables["status"] = "RELEASING"
         variables["sort"] = ["POPULARITY_DESC"]
@@ -277,22 +297,24 @@ async def top_anime(filter_: str | None = None, type_: str | None = None, limit:
         variables["sort"] = ["SCORE_DESC"]
     if type_ and type_ in _FORMAT_MAP:
         variables["format"] = _FORMAT_MAP[type_]
-    return await _run_top_query(variables)
+    return await _run_top_query_page(variables)
 
 
 async def seasonal(year: int, season: str, limit: int = 10) -> list[dict]:
     season_norm = _SEASON_MAP.get(season)
     if not season_norm:
         return []
-    return await _run_top_query({
+    items, _, _ = await _run_top_query_page({
         "perPage": limit,
+        "page": 1,
         "season": season_norm,
         "seasonYear": year,
         "sort": ["POPULARITY_DESC"],
     })
+    return items
 
 
-async def _run_top_query(variables: dict) -> list[dict]:
+async def _run_top_query_page(variables: dict) -> tuple[list[dict], bool, int | None]:
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         try:
             resp = await client.post(
@@ -302,10 +324,15 @@ async def _run_top_query(variables: dict) -> list[dict]:
             resp.raise_for_status()
         except (httpx.HTTPError, httpx.TimeoutException) as e:
             _log.info("AniList top query failed: %s", e)
-            return []
+            return [], False, None
         data = resp.json()
-    media_list = ((data.get("data") or {}).get("Page") or {}).get("media") or []
-    return [_parse(m) for m in media_list if m]
+    page_data = (data.get("data") or {}).get("Page") or {}
+    page_info = page_data.get("pageInfo") or {}
+    has_more = bool(page_info.get("hasNextPage", False))
+    total = page_info.get("total")
+    media_list = page_data.get("media") or []
+    items = [_parse(m) for m in media_list if m]
+    return items, has_more, total
 
 
 async def search_advanced(

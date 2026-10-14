@@ -152,4 +152,5 @@ class TTLCache:
 
 search_cache = TTLCache(ttl_seconds=600, max_size=500)
 feed_cache = TTLCache(ttl_seconds=300, max_size=100)
+category_cache = TTLCache(ttl_seconds=300, max_size=200)
 vibe_cache = TTLCache(ttl_seconds=900, max_size=200)

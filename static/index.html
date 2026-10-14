@@ -4,13 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>EnjoyAnime — Visual Streaming Experience</title>
-  
+
   <!-- Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 
   <!-- HLS.js Video Streaming Engine -->
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js"></script>
-  
+
   <!-- Premium Google Fonts: Plus Jakarta Sans -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -187,6 +187,31 @@
       border-color: rgba(99,102,241,0.5) !important;
       box-shadow: 0 0 20px -4px rgba(99,102,241,0.4);
     }
+
+    /* Carousel navigation buttons */
+    .carousel-nav-btn {
+      transition: background-color 0.2s, opacity 0.2s, transform 0.15s;
+    }
+    .carousel-nav-btn:hover:not(:disabled) {
+      background-color: rgba(255, 255, 255, 0.15);
+    }
+    .carousel-nav-btn:active:not(:disabled) {
+      transform: scale(0.92);
+    }
+    .carousel-nav-btn:focus-visible {
+      outline: 2px solid #6366f1;
+      outline-offset: 2px;
+    }
+
+    /* Reduced motion preferences */
+    @media (prefers-reduced-motion: reduce) {
+      *, ::before, ::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
   </style>
 
   <script>
@@ -288,7 +313,15 @@
             <span class="w-1.5 h-4 rounded-full bg-gradient-to-b from-indigo-500 to-pink-500"></span>
             <h3 class="text-sm font-extrabold text-white tracking-tight">Продолжить просмотр</h3>
           </div>
-          <button onclick="switchTab('library')" class="text-[11px] font-semibold text-indigo-400 hover:text-indigo-300 transition">Все в списке</button>
+          <div class="flex items-center gap-1.5">
+            <button onclick="switchTab('library')" class="text-[11px] font-semibold text-indigo-400 hover:text-indigo-300 transition mr-1">Все в списке</button>
+            <button type="button" data-carousel-prev="continue-watching-list" onclick="scrollCarousel('continue-watching-list', -1)" class="carousel-nav-btn hidden w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center transition disabled:opacity-20 disabled:pointer-events-none" aria-label="Прокрутить назад" title="Назад">
+              <svg class="w-3.5 h-3.5 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <button type="button" data-carousel-next="continue-watching-list" onclick="scrollCarousel('continue-watching-list', 1)" class="carousel-nav-btn hidden w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center transition disabled:opacity-20 disabled:pointer-events-none" aria-label="Прокрутить вперёд" title="Вперёд">
+              <svg class="w-3.5 h-3.5 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
         </div>
         <div id="continue-watching-list" class="flex gap-3 overflow-x-auto no-scrollbar pb-1"></div>
       </section>
@@ -307,11 +340,34 @@
       <!-- CAROUSEL 1: AIRING ONGOINGS -->
       <div class="space-y-3">
         <div class="flex items-center justify-between px-1">
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 cursor-pointer group" onclick="openCategoryView('airing')" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')openCategoryView('airing')" aria-label="Открыть категорию Выходят сейчас">
             <div class="w-2 h-4 rounded-full bg-indigo-500"></div>
-            <h3 class="text-sm font-extrabold tracking-tight text-white uppercase">Выходят сейчас</h3>
+            <h3 class="text-sm font-extrabold tracking-tight text-white uppercase group-hover:text-indigo-400 transition" data-i18n="category_airing">Выходят сейчас</h3>
+            <span class="text-xs text-indigo-400 font-bold ml-1 opacity-80 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" data-i18n="all">Все →</span>
           </div>
-          <span class="text-[11px] font-semibold text-indigo-400">Сезон 2026</span>
+          <div class="flex items-center gap-1.5">
+            <span class="text-[11px] font-semibold text-indigo-400 mr-1 hidden sm:inline">Сезон 2026</span>
+            <button
+              type="button"
+              data-carousel-prev="feed-airing"
+              onclick="scrollCarousel('feed-airing', -1)"
+              class="carousel-nav-btn hidden w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center transition disabled:opacity-20 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              aria-label="Прокрутить назад"
+              title="Назад"
+            >
+              <svg class="w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <button
+              type="button"
+              data-carousel-next="feed-airing"
+              onclick="scrollCarousel('feed-airing', 1)"
+              class="carousel-nav-btn hidden w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center transition disabled:opacity-20 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              aria-label="Прокрутить вперёд"
+              title="Вперёд"
+            >
+              <svg class="w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
         </div>
         <div id="feed-airing" class="flex space-x-3.5 overflow-x-auto pb-2 scrollbar-none pt-1">
           <div class="text-xs text-slate-500 p-4">Загрузка онгоингов…</div>
@@ -321,11 +377,34 @@
       <!-- CAROUSEL 2: TOP RATED -->
       <div class="space-y-3">
         <div class="flex items-center justify-between px-1">
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 cursor-pointer group" onclick="openCategoryView('top')" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')openCategoryView('top')" aria-label="Открыть категорию Топ рейтинга">
             <div class="w-2 h-4 rounded-full bg-amber-500"></div>
-            <h3 class="text-sm font-extrabold tracking-tight text-white uppercase">Топ рейтинга</h3>
+            <h3 class="text-sm font-extrabold tracking-tight text-white uppercase group-hover:text-amber-400 transition" data-i18n="category_top">Топ рейтинга</h3>
+            <span class="text-xs text-amber-400 font-bold ml-1 opacity-80 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" data-i18n="all">Все →</span>
           </div>
-          <span class="text-[11px] font-semibold text-slate-400">All-time</span>
+          <div class="flex items-center gap-1.5">
+            <span class="text-[11px] font-semibold text-slate-400 mr-1 hidden sm:inline">All-time</span>
+            <button
+              type="button"
+              data-carousel-prev="feed-top"
+              onclick="scrollCarousel('feed-top', -1)"
+              class="carousel-nav-btn hidden w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center transition disabled:opacity-20 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-amber-500"
+              aria-label="Прокрутить назад"
+              title="Назад"
+            >
+              <svg class="w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <button
+              type="button"
+              data-carousel-next="feed-top"
+              onclick="scrollCarousel('feed-top', 1)"
+              class="carousel-nav-btn hidden w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center transition disabled:opacity-20 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-amber-500"
+              aria-label="Прокрутить вперёд"
+              title="Вперёд"
+            >
+              <svg class="w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
         </div>
         <div id="feed-top" class="flex space-x-3.5 overflow-x-auto pb-2 scrollbar-none pt-1">
           <!-- Items -->
@@ -335,11 +414,34 @@
       <!-- CAROUSEL 3: POPULAR -->
       <div class="space-y-3">
         <div class="flex items-center justify-between px-1">
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 cursor-pointer group" onclick="openCategoryView('popular')" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')openCategoryView('popular')" aria-label="Открыть категорию Популярное">
             <div class="w-2 h-4 rounded-full bg-pink-500"></div>
-            <h3 class="text-sm font-extrabold tracking-tight text-white uppercase">Популярное</h3>
+            <h3 class="text-sm font-extrabold tracking-tight text-white uppercase group-hover:text-pink-400 transition" data-i18n="category_popular">Популярное</h3>
+            <span class="text-xs text-pink-400 font-bold ml-1 opacity-80 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" data-i18n="all">Все →</span>
           </div>
-          <span class="text-[11px] font-semibold text-slate-400">В тренде</span>
+          <div class="flex items-center gap-1.5">
+            <span class="text-[11px] font-semibold text-slate-400 mr-1 hidden sm:inline">В тренде</span>
+            <button
+              type="button"
+              data-carousel-prev="feed-popular"
+              onclick="scrollCarousel('feed-popular', -1)"
+              class="carousel-nav-btn hidden w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center transition disabled:opacity-20 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-pink-500"
+              aria-label="Прокрутить назад"
+              title="Назад"
+            >
+              <svg class="w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <button
+              type="button"
+              data-carousel-next="feed-popular"
+              onclick="scrollCarousel('feed-popular', 1)"
+              class="carousel-nav-btn hidden w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 active:scale-95 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center transition disabled:opacity-20 disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-pink-500"
+              aria-label="Прокрутить вперёд"
+              title="Вперёд"
+            >
+              <svg class="w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
         </div>
         <div id="feed-popular" class="flex space-x-3.5 overflow-x-auto pb-2 scrollbar-none pt-1">
           <!-- Items -->
@@ -349,13 +451,85 @@
     </section>
 
     <!-- ========================================== -->
+    <!-- CATEGORY SHOWCASE SCREEN (FULL CATALOG) -->
+    <!-- ========================================== -->
+    <section id="view-category" class="hidden space-y-5">
+      <!-- Header Bar with Back Button, Category Title and Optional Total Counter -->
+      <div class="flex items-center justify-between pb-2 border-b border-white/10">
+        <div class="flex items-center gap-3">
+          <button
+            type="button"
+            onclick="closeCategoryView()"
+            class="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 flex items-center justify-center text-slate-200 active:scale-95 transition focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            aria-label="Назад к главной"
+            title="Назад"
+          >
+            <svg class="w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <div>
+            <h2 id="category-view-title" class="text-base font-extrabold text-white tracking-tight">Категория</h2>
+            <p id="category-view-subtitle" class="text-[11px] text-indigo-400 font-medium">Каталог аниме</p>
+          </div>
+        </div>
+        <div id="category-total-badge" class="hidden text-[11px] font-semibold text-slate-400 glass-pill px-2.5 py-1 rounded-xl"></div>
+      </div>
+
+      <!-- SKELETON PLACEHOLDER DURING INITIAL LOAD -->
+      <div id="category-loading" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3.5 pt-1">
+        <div class="skeleton aspect-[2/3] rounded-2xl"></div>
+        <div class="skeleton aspect-[2/3] rounded-2xl"></div>
+        <div class="skeleton aspect-[2/3] rounded-2xl"></div>
+        <div class="skeleton aspect-[2/3] rounded-2xl"></div>
+        <div class="skeleton aspect-[2/3] rounded-2xl"></div>
+        <div class="skeleton aspect-[2/3] rounded-2xl"></div>
+      </div>
+
+      <!-- CARDS GRID -->
+      <div id="category-grid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3.5 pt-1"></div>
+
+      <!-- EMPTY STATE -->
+      <div id="category-empty" class="hidden text-center py-16 space-y-2">
+        <div class="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 mx-auto flex items-center justify-center text-slate-400">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        </div>
+        <p class="text-xs font-semibold text-slate-400" id="category-empty-text">В этой категории пока ничего не найдено</p>
+      </div>
+
+      <!-- FIRST LOAD ERROR STATE -->
+      <div id="category-error" class="hidden text-center py-12 space-y-3">
+        <p class="text-xs text-rose-400 font-medium" id="category-error-text">Не удалось загрузить подборку</p>
+        <button type="button" onclick="retryCategoryLoad()" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold shadow hover:bg-indigo-500 transition active:scale-95" id="category-retry-btn">
+          Повторить
+        </button>
+      </div>
+
+      <!-- PAGINATION / LOAD MORE WRAPPER -->
+      <div id="category-load-more-wrapper" class="hidden py-4 text-center space-y-3">
+        <button
+          id="category-load-more-btn"
+          type="button"
+          onclick="loadNextCategoryPage()"
+          class="w-full sm:w-auto px-8 py-3 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-extrabold text-xs shadow-glow-indigo active:scale-98 transition flex items-center justify-center gap-2 mx-auto disabled:opacity-50"
+        >
+          <span id="category-load-more-text">Показать ещё</span>
+        </button>
+        <div id="category-page-error" class="hidden text-center space-y-2">
+          <p class="text-xs text-rose-400 font-medium" id="category-page-error-text">Ошибка загрузки следующей страницы</p>
+          <button type="button" onclick="loadNextCategoryPage()" class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-white text-[11px] font-bold transition active:scale-95" id="category-page-retry-btn">
+            Повторить
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
     <!-- TAB 2: SEARCH (ПОИСК) -->
     <!-- ========================================== -->
     <section id="view-search" class="hidden space-y-5">
       <div class="relative">
-        <input 
-          id="search-input" 
-          type="text" 
+        <input
+          id="search-input"
+          type="text"
           placeholder="Поиск аниме (Клинок, Наруто, Блич, ДжоДжо)..."
           class="w-full bg-dark-850 border border-white/10 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 rounded-2xl px-4 py-3.5 pl-11 text-sm font-medium text-white placeholder-slate-500 outline-none transition shadow-inner"
         >
@@ -533,7 +707,7 @@
   <!-- ========================================== -->
   <div id="detail-modal" class="fixed inset-0 z-50 bg-black/90 backdrop-blur-xl hidden flex flex-col justify-end transition-all duration-300">
     <div class="bg-dark-900 border-t border-white/10 w-full max-h-[94vh] overflow-y-auto rounded-t-[32px] p-5 space-y-5 shadow-2xl">
-      
+
       <!-- Top Close Bar -->
       <div class="flex items-center justify-between pb-1">
         <div class="w-10 h-1 rounded-full bg-white/20 mx-auto -mr-6"></div>
@@ -753,16 +927,349 @@
       tg?.HapticFeedback?.impactOccurred('light');
     }
 
+    const I18N = {
+      ru: {
+        all: "Все →",
+        scroll_prev: "Прокрутить назад",
+        scroll_next: "Прокрутить вперёд",
+        back: "Назад",
+        category_airing: "Выходят сейчас",
+        category_popular: "Популярное",
+        category_top: "Топ рейтинга",
+        catalog_subtitle: "Каталог аниме",
+        load_more: "Показать ещё",
+        loading: "Загрузка…",
+        empty: "В этой категории пока ничего не найдено",
+        error_load: "Не удалось загрузить подборку",
+        error_page: "Ошибка загрузки следующей страницы",
+        retry: "Повторить",
+        titles_count: "тайтлов",
+      },
+      en: {
+        all: "All →",
+        scroll_prev: "Scroll backward",
+        scroll_next: "Scroll forward",
+        back: "Back",
+        category_airing: "Airing Now",
+        category_popular: "Popular",
+        category_top: "Top Rated",
+        catalog_subtitle: "Anime catalog",
+        load_more: "Load more",
+        loading: "Loading…",
+        empty: "Nothing found in this category yet",
+        error_load: "Failed to load category",
+        error_page: "Failed to load next page",
+        retry: "Retry",
+        titles_count: "titles",
+      },
+      uk: {
+        all: "Всі →",
+        scroll_prev: "Прокрутити назад",
+        scroll_next: "Прокрутити вперед",
+        back: "Назад",
+        category_airing: "Виходять зараз",
+        category_popular: "Популярне",
+        category_top: "Топ рейтингу",
+        catalog_subtitle: "Каталог аніме",
+        load_more: "Показати ще",
+        loading: "Завантаження…",
+        empty: "У цій категорії поки нічого не знайдено",
+        error_load: "Не вдалося завантажити підбірку",
+        error_page: "Помилка завантаження наступної сторінки",
+        retry: "Повторити",
+        titles_count: "тайтлів",
+      }
+    };
+
+    function detectLang() {
+      const code = (tg?.initDataUnsafe?.user?.language_code || navigator.language || 'ru').toLowerCase();
+      if (code.startsWith('uk')) return 'uk';
+      if (code.startsWith('en')) return 'en';
+      return 'ru';
+    }
+
+    const currentAppLang = detectLang();
+
+    function getI18n(key) {
+      return (I18N[currentAppLang] && I18N[currentAppLang][key]) || I18N['ru'][key] || key;
+    }
+
+    function applyI18nToStaticDOM() {
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const k = el.getAttribute('data-i18n');
+        if (k) el.textContent = getI18n(k);
+      });
+    }
+
+    let activeView = 'home';
+    let savedHomeScrollY = 0;
+    let currentCategory = null;
+    let currentCategoryPage = 1;
+    let currentCategoryHasMore = false;
+    let currentCategorySource = null;
+    let currentCategoryItems = [];
+    const currentCategoryIds = new Set();
+    const loadedCategoryPages = new Set();
+    let isLoadingCategory = false;
+    let categorySeqId = 0;
+
+    function scrollCarousel(containerId, direction) {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      haptic();
+      const step = Math.max(200, Math.floor(el.clientWidth * 0.82));
+      const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      el.scrollBy({
+        left: direction * step,
+        behavior: prefersReduced ? 'auto' : 'smooth'
+      });
+    }
+
+    function updateCarouselArrows(containerId) {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      const prevBtn = document.querySelector(`[data-carousel-prev="${containerId}"]`);
+      const nextBtn = document.querySelector(`[data-carousel-next="${containerId}"]`);
+      if (!prevBtn || !nextBtn) return;
+
+      const hasOverflow = el.scrollWidth > el.clientWidth + 4;
+      if (!hasOverflow) {
+        prevBtn.classList.add('hidden');
+        nextBtn.classList.add('hidden');
+        return;
+      }
+      prevBtn.classList.remove('hidden');
+      nextBtn.classList.remove('hidden');
+
+      const isAtStart = el.scrollLeft <= 4;
+      const isAtEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 4;
+
+      prevBtn.disabled = isAtStart;
+      prevBtn.classList.toggle('opacity-20', isAtStart);
+      prevBtn.classList.toggle('pointer-events-none', isAtStart);
+
+      nextBtn.disabled = isAtEnd;
+      nextBtn.classList.toggle('opacity-20', isAtEnd);
+      nextBtn.classList.toggle('pointer-events-none', isAtEnd);
+    }
+
+    async function openCategoryView(category) {
+      haptic();
+      if (activeView === 'home') {
+        savedHomeScrollY = window.scrollY || window.pageYOffset || 0;
+      }
+      activeView = 'category';
+      currentCategory = category;
+      currentCategoryPage = 1;
+      currentCategoryHasMore = false;
+      currentCategorySource = null;
+      currentCategoryItems = [];
+      currentCategoryIds.clear();
+      loadedCategoryPages.clear();
+
+      categorySeqId++;
+      const thisSeq = categorySeqId;
+
+      ['home', 'search', 'library'].forEach(t => {
+        const el = document.getElementById(`view-${t}`);
+        if (el) el.classList.add('hidden');
+      });
+      const catView = document.getElementById('view-category');
+      if (catView) catView.classList.remove('hidden');
+      window.scrollTo({ top: 0, behavior: 'instant' });
+
+      if (tg?.BackButton) {
+        tg.BackButton.show();
+        tg.BackButton.onClick(closeCategoryView);
+      }
+
+      const titles = {
+        airing: getI18n('category_airing'),
+        popular: getI18n('category_popular'),
+        top: getI18n('category_top')
+      };
+      const titleEl = document.getElementById('category-view-title');
+      if (titleEl) titleEl.textContent = titles[category] || category;
+      const subtitleEl = document.getElementById('category-view-subtitle');
+      if (subtitleEl) subtitleEl.textContent = getI18n('catalog_subtitle');
+      const totalBadge = document.getElementById('category-total-badge');
+      if (totalBadge) totalBadge.classList.add('hidden');
+
+      const grid = document.getElementById('category-grid');
+      if (grid) grid.innerHTML = '';
+      const emptyEl = document.getElementById('category-empty');
+      if (emptyEl) emptyEl.classList.add('hidden');
+      const errorEl = document.getElementById('category-error');
+      if (errorEl) errorEl.classList.add('hidden');
+      const pageErrorEl = document.getElementById('category-page-error');
+      if (pageErrorEl) pageErrorEl.classList.add('hidden');
+      const loadMoreWrap = document.getElementById('category-load-more-wrapper');
+      if (loadMoreWrap) loadMoreWrap.classList.add('hidden');
+      const loadingEl = document.getElementById('category-loading');
+      if (loadingEl) loadingEl.classList.remove('hidden');
+
+      await fetchCategoryPage(1, thisSeq);
+    }
+
+    function closeCategoryView() {
+      haptic();
+      activeView = 'home';
+      const catView = document.getElementById('view-category');
+      if (catView) catView.classList.add('hidden');
+      const homeView = document.getElementById('view-home');
+      if (homeView) homeView.classList.remove('hidden');
+
+      window.scrollTo({ top: savedHomeScrollY, behavior: 'instant' });
+
+      if (tg?.BackButton) {
+        tg.BackButton.hide();
+      }
+    }
+
+    async function fetchCategoryPage(page, seq) {
+      if (isLoadingCategory) return;
+      if (loadedCategoryPages.has(page)) return;
+      isLoadingCategory = true;
+
+      const btnLoadMore = document.getElementById('category-load-more-btn');
+      if (btnLoadMore) btnLoadMore.disabled = true;
+      const pageErrorEl = document.getElementById('category-page-error');
+      if (pageErrorEl) pageErrorEl.classList.add('hidden');
+
+      try {
+        let url = `/api/category/${currentCategory}?page=${page}&limit=24&lang=${currentAppLang}`;
+        if (currentCategorySource) {
+          url += `&source=${encodeURIComponent(currentCategorySource)}`;
+        }
+
+        const res = await apiFetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        // Race condition check: user may have clicked another category while fetching
+        if (seq !== categorySeqId) {
+          return;
+        }
+
+        const loadingEl = document.getElementById('category-loading');
+        if (loadingEl) loadingEl.classList.add('hidden');
+
+        if (page === 1) {
+          currentCategorySource = data.source || null;
+          if (typeof data.total === 'number' && data.total > 0) {
+            const totalBadge = document.getElementById('category-total-badge');
+            if (totalBadge) {
+              totalBadge.textContent = `${data.total} ${getI18n('titles_count')}`;
+              totalBadge.classList.remove('hidden');
+            }
+          }
+        }
+
+        loadedCategoryPages.add(page);
+        currentCategoryPage = page;
+        currentCategoryHasMore = !!data.has_more;
+
+        const newItems = data.items || [];
+        const dedupedNew = [];
+        for (const item of newItems) {
+          const cid = item.shikimori_id || item.mal_id || item.id;
+          if (cid && !currentCategoryIds.has(cid)) {
+            currentCategoryIds.add(cid);
+            dedupedNew.push(item);
+          } else if (!cid) {
+            dedupedNew.push(item);
+          }
+        }
+
+        currentCategoryItems.push(...dedupedNew);
+
+        const grid = document.getElementById('category-grid');
+        const emptyEl = document.getElementById('category-empty');
+        const loadMoreWrap = document.getElementById('category-load-more-wrapper');
+
+        if (page === 1 && currentCategoryItems.length === 0) {
+          if (emptyEl) emptyEl.classList.remove('hidden');
+          if (loadMoreWrap) loadMoreWrap.classList.add('hidden');
+        } else {
+          if (emptyEl) emptyEl.classList.add('hidden');
+          if (grid && dedupedNew.length > 0) {
+            grid.insertAdjacentHTML('beforeend', dedupedNew.map(item => renderCardHTML(item, false)).join(''));
+          }
+
+          if (loadMoreWrap) {
+            if (currentCategoryHasMore) {
+              loadMoreWrap.classList.remove('hidden');
+              if (btnLoadMore) {
+                btnLoadMore.disabled = false;
+                btnLoadMore.classList.remove('hidden');
+              }
+            } else {
+              loadMoreWrap.classList.add('hidden');
+            }
+          }
+        }
+      } catch (err) {
+        if (seq !== categorySeqId) return;
+        console.error('Category load error:', err);
+        const loadingEl = document.getElementById('category-loading');
+        if (loadingEl) loadingEl.classList.add('hidden');
+
+        if (page === 1) {
+          const errorEl = document.getElementById('category-error');
+          if (errorEl) errorEl.classList.remove('hidden');
+          const loadMoreWrap = document.getElementById('category-load-more-wrapper');
+          if (loadMoreWrap) loadMoreWrap.classList.add('hidden');
+        } else {
+          // Keep existing cards! Only show error on load-more section
+          if (pageErrorEl) pageErrorEl.classList.remove('hidden');
+          if (btnLoadMore) btnLoadMore.disabled = false;
+        }
+      } finally {
+        if (seq === categorySeqId) {
+          isLoadingCategory = false;
+          if (btnLoadMore) btnLoadMore.disabled = false;
+        }
+      }
+    }
+
+    async function loadNextCategoryPage() {
+      if (isLoadingCategory || !currentCategoryHasMore) return;
+      haptic();
+      await fetchCategoryPage(currentCategoryPage + 1, categorySeqId);
+    }
+
+    async function retryCategoryLoad() {
+      haptic();
+      const errorEl = document.getElementById('category-error');
+      if (errorEl) errorEl.classList.add('hidden');
+      const loadingEl = document.getElementById('category-loading');
+      if (loadingEl) loadingEl.classList.remove('hidden');
+      await fetchCategoryPage(1, categorySeqId);
+    }
+
     function switchTab(tab) {
       haptic();
-      ['home', 'search', 'library'].forEach(t => {
-        document.getElementById(`view-${t}`).classList.add('hidden');
-        document.getElementById(`nav-${t}`).classList.remove('text-indigo-400');
-        document.getElementById(`nav-${t}`).classList.add('text-slate-400');
+      activeView = tab;
+      ['home', 'search', 'library', 'category'].forEach(t => {
+        const el = document.getElementById(`view-${t}`);
+        if (el) el.classList.add('hidden');
+        const navEl = document.getElementById(`nav-${t}`);
+        if (navEl) {
+          navEl.classList.remove('text-indigo-400');
+          navEl.classList.add('text-slate-400');
+        }
       });
-      document.getElementById(`view-${tab}`).classList.remove('hidden');
-      document.getElementById(`nav-${tab}`).classList.add('text-indigo-400');
-      document.getElementById(`nav-${tab}`).classList.remove('text-slate-400');
+      const activeSection = document.getElementById(`view-${tab}`);
+      if (activeSection) activeSection.classList.remove('hidden');
+      const activeNav = document.getElementById(`nav-${tab}`);
+      if (activeNav) {
+        activeNav.classList.add('text-indigo-400');
+        activeNav.classList.remove('text-slate-400');
+      }
+
+      if (tg?.BackButton) {
+        tg.BackButton.hide();
+      }
 
       if (tab === 'library') loadLibrary(currentLibraryStatus);
     }
@@ -772,7 +1279,7 @@
       try {
         const res = await apiFetch(`/api/feed?user_id=${user.id}`);
         const data = await res.json();
-        
+
         if (data.airing && data.airing.length > 0) {
           const hero = data.hero || data.popular[0] || data.airing[0];
           document.getElementById('hero-title').textContent = hero.title_ru || hero.title_en;
@@ -808,6 +1315,7 @@
               </div>
             </div>
           `).join('');
+          updateCarouselArrows('continue-watching-list');
         } else {
           contSection.classList.add('hidden');
         }
@@ -840,22 +1348,22 @@
       const ep = item.episodes ? `${item.episodes} эп.` : (item.status === 'ongoing' ? 'Онгоинг' : '');
       const img = item.image_url || FALLBACK_POSTER;
 
-      const cardClass = isCarousel 
-        ? 'media-card cursor-pointer group flex-shrink-0 select-none' 
+      const cardClass = isCarousel
+        ? 'media-card cursor-pointer group flex-shrink-0 select-none'
         : 'cursor-pointer group flex flex-col h-full select-none';
 
       return `
         <div class="${cardClass}" onclick="openCard(${id})">
           <div class="relative rounded-2xl overflow-hidden aspect-[2/3] bg-dark-900 border border-white/10 shadow-card-elevated group-hover:border-indigo-500/60 group-hover:shadow-[0_12px_28px_rgba(99,102,241,0.3)] group-active:scale-[0.97] transition-all duration-300">
-            <img 
-              src="${img}" 
-              alt="${title}" 
-              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 will-change-transform" 
+            <img
+              src="${img}"
+              alt="${title}"
+              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 will-change-transform"
               loading="lazy"
               onerror="imgFallback(this)"
             >
             <div class="absolute inset-0 bg-gradient-to-t from-dark-950/90 via-dark-950/20 to-transparent pointer-events-none"></div>
-            
+
             <div class="absolute top-2 left-2 glass-pill px-2 py-0.5 rounded-lg text-[10px] font-extrabold text-amber-300 flex items-center gap-1 shadow border border-amber-400/20">
               <svg class="w-2.5 h-2.5 fill-amber-400" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
               <span>${score}</span>
@@ -885,9 +1393,11 @@
       const container = document.getElementById(elemId);
       if (!items || items.length === 0) {
         container.innerHTML = '<div class="text-xs text-slate-500 py-3">Нет данных</div>';
+        updateCarouselArrows(elemId);
         return;
       }
       container.innerHTML = items.map(item => renderCardHTML(item, true)).join('');
+      requestAnimationFrame(() => updateCarouselArrows(elemId));
     }
 
     // RANDOM ANIME ROLL
@@ -967,7 +1477,7 @@
         const res = await fetch(`/api/vibe?genre=${selectedVibeGenre}&min_score=${selectedVibeScore}&year_from=${selectedVibeYearFrom}&year_to=${selectedVibeYearTo}&limit=8`);
         const data = await res.json();
         const items = data.results || [];
-        
+
         if (items.length === 0) {
           grid.innerHTML = '<div class="col-span-2 text-center text-slate-500 py-6 text-xs">Ничего не найдено, попробуйте снизить рейтинг</div>';
           return;
@@ -1080,7 +1590,7 @@
         document.getElementById('modal-year').textContent = data.year || '';
         document.getElementById('modal-episodes-info').textContent = data.episodes ? `${data.episodes} эп.` : 'Онгоинг';
         document.getElementById('modal-synopsis').textContent = sanitizeDescription(data.synopsis_ru);
-        
+
         // Genres
         const genresEl = document.getElementById('modal-genres');
         genresEl.innerHTML = (data.genres || []).slice(0, 4).map(g => `
@@ -1138,7 +1648,7 @@
           if (data.kodik.translations && data.kodik.translations.length > 1) {
             voiceWrapper.classList.remove('hidden');
             document.getElementById('voice-pills').innerHTML = data.kodik.translations.map(t => `
-              <button 
+              <button
                 id="voice-pill-${t.id}"
                 class="voice-pill shrink-0 px-3 py-1.5 rounded-xl ${t.id === data.kodik.translation_id ? 'bg-gradient-to-tr from-violet-600 to-indigo-600 text-white font-bold shadow-glow-indigo' : 'bg-white/5 border border-white/10 text-slate-300'} text-xs active:scale-95 transition"
                 onclick="switchTranslation(${data.shikimori_id || data.mal_id}, ${t.id})"
@@ -1491,7 +2001,7 @@
       }
 
       epList.innerHTML = rangeNavHTML + visibleKeys.map((epNum) => `
-        <button 
+        <button
           id="ep-btn-${epNum}"
           class="ep-btn px-3 py-1.5 rounded-xl ${epNum === currentPlayingEpisode ? 'bg-gradient-to-tr from-violet-600 to-indigo-600 text-white border border-indigo-400 shadow-glow-indigo' : 'bg-white/5 border border-white/10 text-slate-200'} text-xs font-bold hover:bg-indigo-600 hover:text-white transition active:scale-95"
           onclick="changeEpisode('${episodesMap[epNum] || ''}', ${epNum})"
@@ -1724,8 +2234,15 @@
       const modal = document.getElementById('detail-modal');
       if (modal) modal.classList.add('hidden');
       stopVideo();
-      if (tg?.BackButton) {
-        tg.BackButton.hide();
+      if (activeView === 'category') {
+        if (tg?.BackButton) {
+          tg.BackButton.show();
+          tg.BackButton.onClick(closeCategoryView);
+        }
+      } else {
+        if (tg?.BackButton) {
+          tg.BackButton.hide();
+        }
       }
     }
     document.getElementById('modal-close').onclick = closeDetail;
@@ -1938,6 +2455,18 @@
       });
       loadLibrary(currentLibraryStatus);
     }
+
+    applyI18nToStaticDOM();
+    const carouselIds = ['feed-airing', 'feed-top', 'feed-popular', 'continue-watching-list'];
+    carouselIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener('scroll', () => updateCarouselArrows(id), { passive: true });
+      }
+    });
+    window.addEventListener('resize', () => {
+      carouselIds.forEach(updateCarouselArrows);
+    });
 
     loadFeed();
 

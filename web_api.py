@@ -385,6 +385,65 @@ async def get_feed(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/category/{category}")
+async def get_category(
+    category: str,
+    page: int = Query(1, ge=1, le=100),
+    limit: int = Query(24, ge=1, le=50),
+    lang: str = Query("ru"),
+    source: Optional[str] = Query(None),
+):
+    """Returns paginated catalog for a specific category with provider pinning and bounded timeout.
+
+    Valid categories: 'airing', 'popular', 'top'.
+    """
+    if category not in ("airing", "popular", "top"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid category. Must be one of: airing, popular, top",
+        )
+
+    from utils.cache import category_cache
+
+    cache_key = f"category:{category}:{page}:{limit}:{lang}:{source or 'any'}"
+
+    async def _compute():
+        try:
+            async with asyncio.timeout(settings.feed_timeout_seconds):
+                return await aggregator.get_category_page(
+                    category=category,
+                    page=page,
+                    limit=limit,
+                    preferred_source=source,
+                    timeout=settings.feed_timeout_seconds,
+                )
+        except (asyncio.TimeoutError, TimeoutError):
+            _log.warning(
+                "Category %s (page=%d) loading exceeded deadline budget (%.1fs)",
+                category, page, settings.feed_timeout_seconds,
+            )
+            raise HTTPException(status_code=504, detail="Category loading timeout")
+        except Exception as e:
+            _log.exception("Category loading error for %s (page=%d): %s", category, page, e)
+            raise HTTPException(status_code=502, detail="Category upstream source error")
+
+    def _should_cache_category(data: Any) -> bool:
+        return bool(data and isinstance(data, dict) and data.get("items"))
+
+    try:
+        res = await category_cache.get_or_compute(
+            cache_key,
+            _compute,
+            should_cache=_should_cache_category,
+        )
+        return res
+    except HTTPException:
+        raise
+    except Exception as e:
+        _log.exception("Unexpected error in get_category: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/recommendations")
 async def get_recommendations_endpoint(
     genre: Optional[str] = None,
