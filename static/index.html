@@ -1187,7 +1187,7 @@
         const emptyEl = document.getElementById('category-empty');
         const loadMoreWrap = document.getElementById('category-load-more-wrapper');
 
-        if (page === 1 && currentCategoryItems.length === 0) {
+        if (page === 1 && currentCategoryItems.length === 0 && !currentCategoryHasMore) {
           if (emptyEl) emptyEl.classList.remove('hidden');
           if (loadMoreWrap) loadMoreWrap.classList.add('hidden');
         } else {

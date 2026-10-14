@@ -88,27 +88,21 @@ async def get_category_page(
 
     async def _try_shikimori(to: float) -> tuple[list[dict], bool, int | None] | None:
         try:
-            items = await shikimori.top_anime(filter_=filter_val, limit=limit, page=page, timeout=to)
-            if items:
-                return items, len(items) >= limit, None
+            return await shikimori.top_anime_page(filter_=filter_val, limit=limit, page=page, timeout=to)
         except Exception as e:
             _log.info("Shikimori category page failed: %s", e)
         return None
 
     async def _try_jikan() -> tuple[list[dict], bool, int | None] | None:
         try:
-            items = await jikan.top_anime(filter_=filter_val, limit=limit, page=page)
-            if items:
-                return items, len(items) >= limit, None
+            return await jikan.top_anime_page(filter_=filter_val, limit=limit, page=page)
         except Exception as e:
             _log.info("Jikan category page failed: %s", e)
         return None
 
     async def _try_anilist() -> tuple[list[dict], bool, int | None] | None:
         try:
-            items, has_more, total = await anilist.top_anime_page(filter_=filter_val, limit=limit, page=page)
-            if items:
-                return items, has_more, total
+            return await anilist.top_anime_page(filter_=filter_val, limit=limit, page=page)
         except Exception as e:
             _log.info("AniList category page failed: %s", e)
         return None
@@ -120,36 +114,39 @@ async def get_category_page(
         # Enforce provider pinning: never silently switch provider on subsequent pages
         if preferred_source == "shikimori":
             raw_result = await _try_shikimori(timeout)
-            if raw_result:
+            if raw_result is not None:
                 selected_source = "shikimori"
         elif preferred_source == "jikan":
             raw_result = await _try_jikan()
-            if raw_result:
+            if raw_result is not None:
                 selected_source = "jikan"
         elif preferred_source == "anilist":
             raw_result = await _try_anilist()
-            if raw_result:
+            if raw_result is not None:
                 selected_source = "anilist"
     else:
         # Initial page: prioritize Shikimori, fallback to Jikan then AniList
         shiki_to = max(0.5, min(timeout * 0.6, 2.5))
-        raw_result = await _try_shikimori(shiki_to)
-        if raw_result:
+        res = await _try_shikimori(shiki_to)
+        if res is not None and (res[0] or res[1]):
+            raw_result = res
             selected_source = "shikimori"
         else:
-            raw_result = await _try_jikan()
-            if raw_result:
+            res = await _try_jikan()
+            if res is not None and (res[0] or res[1]):
+                raw_result = res
                 selected_source = "jikan"
             else:
-                raw_result = await _try_anilist()
-                if raw_result:
+                res = await _try_anilist()
+                if res is not None and (res[0] or res[1]):
+                    raw_result = res
                     selected_source = "anilist"
 
     items: list[dict] = []
     has_more = False
     total: int | None = None
 
-    if raw_result:
+    if raw_result is not None:
         raw_items, has_more, total = raw_result
         seen_ids: set[int] = set()
         for it in raw_items:

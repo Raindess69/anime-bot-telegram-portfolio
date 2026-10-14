@@ -57,9 +57,37 @@ async def top_anime(
     timeout: float = 4.0,
 ) -> list[dict]:
     """Top-charts fallback via Shikimori /animes with order/status params."""
-    fetch_limit = min(max(limit, 50 if limit > 25 else limit * 2), 50)
+    items, _, _ = await top_anime_page(
+        filter_=filter_,
+        type_=type_,
+        limit=limit,
+        page=page,
+        timeout=timeout,
+        probe_next=False,
+    )
+    return items
+
+
+async def top_anime_page(
+    filter_: str | None = None,
+    type_: str | None = None,
+    limit: int = 24,
+    page: int = 1,
+    timeout: float = 4.0,
+    probe_next: bool = True,
+) -> tuple[list[dict], bool, int | None]:
+    """Fetch paginated category anime from Shikimori with reliable has_more detection.
+
+    Returns: (valid_items, has_more, total_or_none)
+    Guarantees:
+    - Never changes upstream limit arbitrarily to prevent page gaps or duplicate items.
+    - Determines continuation from upstream response size, not post-filter card count.
+    - Probes page + 1 when upstream page is full to detect real end of catalog (when probe_next=True).
+    - If probe_next=False (e.g. from feed), never issues probe request.
+    - Treats probe errors/timeouts optimistically (never as end of catalog).
+    """
     params: dict[str, str | int] = {
-        "limit": fetch_limit,
+        "limit": limit,
         "page": page,
         "order": "ranked",
         "censored": "true",
@@ -73,19 +101,54 @@ async def top_anime(
         params["order"] = "popularity"
     if type_ and type_ in _KIND_MAP:
         params["kind"] = _KIND_MAP[type_]
+
     try:
         resp = await _get("/animes", params=params, timeout=timeout, max_retries=1)
         resp.raise_for_status()
     except (httpx.HTTPError, httpx.TimeoutException) as e:
-        _log.info("Shikimori top failed: %s", e)
-        return []
-    items = resp.json() or []
+        _log.info("Shikimori top page failed: %s", e)
+        return [], False, None
+
+    raw_items = resp.json() or []
+    if not isinstance(raw_items, list):
+        return [], False, None
+
     valid = [
         _parse_short(x)
-        for x in items
+        for x in raw_items
         if x and x.get("image", {}).get("original") and "missing" not in x.get("image", {}).get("original")
     ]
-    return valid[:limit]
+
+    # If upstream returned strictly fewer records than requested limit, upstream is exhausted
+    if len(raw_items) < limit:
+        return valid, False, None
+
+    # For non-paginated callers (like feed), avoid probing page + 1
+    if not probe_next:
+        return valid, len(raw_items) >= limit, None
+
+    # Upstream returned a full page of `limit` items.
+    # Probe page + 1 with the exact same limit to detect whether upstream has additional items.
+    probe_params = dict(params)
+    probe_params["page"] = page + 1
+    probe_timeout = min(max(timeout * 0.5, 0.5), 1.5)
+    has_more = True
+    try:
+        probe_resp = await _get("/animes", params=probe_params, timeout=probe_timeout, max_retries=0)
+        if probe_resp is not None and probe_resp.is_success:
+            probe_raw = probe_resp.json() or []
+            if isinstance(probe_raw, list):
+                has_more = len(probe_raw) > 0
+            else:
+                has_more = True
+        else:
+            # Upstream error/non-200 on probe: never treat as end of catalog
+            has_more = True
+    except Exception as e:
+        _log.info("Shikimori next page probe failed (%s); continuing optimistically", e)
+        has_more = True
+
+    return valid, has_more, None
 
 
 async def seasonal(year: int, season: str, limit: int = 10, timeout: float = 4.0) -> list[dict]:

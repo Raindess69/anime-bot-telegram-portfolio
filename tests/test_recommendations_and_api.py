@@ -510,8 +510,8 @@ class TestRecommendationsAndAPI(unittest.IsolatedAsyncioTestCase):
             {"id": 101, "shikimori_id": 101, "mal_id": 101, "title_ru": "Anime A Duplicate"},
         ]
 
-        with patch("services.shikimori.top_anime", new=AsyncMock(return_value=raw_with_duplicates)), \
-             patch("services.jikan.top_anime", new=AsyncMock(return_value=[{"id": 999}])):
+        with patch("services.shikimori.top_anime_page", new=AsyncMock(return_value=(raw_with_duplicates, True, None))), \
+             patch("services.jikan.top_anime_page", new=AsyncMock(return_value=([{"id": 999}], False, None))):
             # Initial page
             res = await aggregator.get_category_page(
                 category="airing",
@@ -524,7 +524,7 @@ class TestRecommendationsAndAPI(unittest.IsolatedAsyncioTestCase):
             self.assertEqual([x["id"] for x in res["items"]], [101, 102])
 
             # If preferred_source fails, does NOT query jikan
-            with patch("services.shikimori.top_anime", side_effect=RuntimeError("Shiki down")):
+            with patch("services.shikimori.top_anime_page", side_effect=RuntimeError("Shiki down")):
                 res_failed = await aggregator.get_category_page(
                     category="airing",
                     page=2,
@@ -533,6 +533,243 @@ class TestRecommendationsAndAPI(unittest.IsolatedAsyncioTestCase):
                 )
                 self.assertEqual(res_failed["items"], [])
                 self.assertIsNone(res_failed["source"], "Must not switch provider when pinned")
+
+    async def test_shikimori_top_anime_page_partial_filtered_preserves_continuation(self):
+        """Case 1: Raw page is full (24 items), but after filtering missing posters 15 remain.
+
+        Continuation must NOT be lost (has_more=True).
+        """
+        from services import shikimori
+        from unittest.mock import MagicMock
+
+        # 15 items with valid posters, 9 with missing poster
+        raw_page_1 = [
+            {"id": i, "name": f"Airing {i}", "russian": f"Аниме {i}", "image": {"original": "https://shiki/poster.jpg"}}
+            for i in range(1, 16)
+        ] + [
+            {"id": i, "name": f"Airing {i}", "russian": f"Аниме {i}", "image": {"original": "https://shiki/missing_original.jpg"}}
+            for i in range(16, 25)
+        ]
+        raw_page_2 = [
+            {"id": i, "name": f"Airing {i}", "russian": f"Аниме {i}", "image": {"original": "https://shiki/poster.jpg"}}
+            for i in range(25, 49)
+        ]
+
+        def _mock_get(url, params=None, timeout=None, max_retries=1):
+            mock_resp = MagicMock()
+            mock_resp.is_success = True
+            mock_resp.status_code = 200
+            if params and params.get("page") == 1:
+                mock_resp.json.return_value = raw_page_1
+            elif params and params.get("page") == 2:
+                mock_resp.json.return_value = raw_page_2
+            else:
+                mock_resp.json.return_value = []
+            return mock_resp
+
+        with patch("services.shikimori._get", new=AsyncMock(side_effect=_mock_get)):
+            items, has_more, total = await shikimori.top_anime_page(filter_="airing", limit=24, page=1)
+            self.assertEqual(len(items), 15, "15 valid items should remain after filtering")
+            self.assertTrue(has_more, "has_more must be True when upstream page was full and page 2 exists")
+
+    async def test_shikimori_top_anime_page_subsequent_page_new_titles_and_no_skips(self):
+        """Case 2: Page 2 returns 20 distinct items with 0 ID intersection and no offset skips."""
+        from services import shikimori
+        from unittest.mock import MagicMock
+
+        # Page 1: 24 raw, 15 valid
+        raw_page_1 = [
+            {"id": i, "name": f"Airing {i}", "russian": f"Аниме {i}", "image": {"original": "https://shiki/poster.jpg"}}
+            for i in range(1, 16)
+        ] + [
+            {"id": i, "name": f"Airing {i}", "russian": f"Аниме {i}", "image": {"original": "missing"}}
+            for i in range(16, 25)
+        ]
+        # Page 2: 24 raw (offset 24..47), 20 valid (4 missing)
+        raw_page_2 = [
+            {"id": i, "name": f"Airing {i}", "russian": f"Аниме {i}", "image": {"original": "https://shiki/poster.jpg"}}
+            for i in range(25, 45)
+        ] + [
+            {"id": i, "name": f"Airing {i}", "russian": f"Аниме {i}", "image": {"original": "missing"}}
+            for i in range(45, 49)
+        ]
+        # Page 3: probe
+        raw_page_3 = [{"id": 49, "name": "Airing 49", "image": {"original": "poster.jpg"}}]
+
+        def _mock_get(url, params=None, timeout=None, max_retries=1):
+            mock_resp = MagicMock()
+            mock_resp.is_success = True
+            mock_resp.status_code = 200
+            p = params.get("page") if params else 1
+            if p == 1:
+                mock_resp.json.return_value = raw_page_1
+            elif p == 2:
+                mock_resp.json.return_value = raw_page_2
+            elif p == 3:
+                mock_resp.json.return_value = raw_page_3
+            else:
+                mock_resp.json.return_value = []
+            return mock_resp
+
+        with patch("services.shikimori._get", new=AsyncMock(side_effect=_mock_get)):
+            items_p1, has_more_p1, _ = await shikimori.top_anime_page(filter_="airing", limit=24, page=1)
+            items_p2, has_more_p2, _ = await shikimori.top_anime_page(filter_="airing", limit=24, page=2)
+
+            ids_p1 = {x["shikimori_id"] for x in items_p1}
+            ids_p2 = {x["shikimori_id"] for x in items_p2}
+
+            self.assertEqual(len(ids_p1), 15)
+            self.assertEqual(len(ids_p2), 20)
+            self.assertEqual(ids_p1 & ids_p2, set(), "Page 1 and Page 2 must have zero intersecting IDs")
+            self.assertTrue(has_more_p1)
+            self.assertTrue(has_more_p2)
+
+    async def test_shikimori_top_anime_page_real_end_of_catalog(self):
+        """Case 3: Real end of catalog detection (both via raw < limit and empty probe)."""
+        from services import shikimori
+        from unittest.mock import MagicMock
+
+        # Subcase 3A: Upstream returns fewer than limit (e.g. 10 < 24) -> immediate has_more=False
+        resp_3a = MagicMock()
+        resp_3a.is_success = True
+        resp_3a.status_code = 200
+        resp_3a.json.return_value = [
+            {"id": i, "name": f"Airing {i}", "image": {"original": "poster.jpg"}}
+            for i in range(1, 11)
+        ]
+        with patch("services.shikimori._get", new=AsyncMock(return_value=resp_3a)):
+            items, has_more, _ = await shikimori.top_anime_page(filter_="airing", limit=24, page=1)
+            self.assertEqual(len(items), 10)
+            self.assertFalse(has_more, "has_more must be False when upstream returned fewer than limit")
+
+        # Subcase 3B: Upstream returns exactly limit (24), but probe for next page returns empty list []
+        def _mock_get_3b(url, params=None, timeout=None, max_retries=1):
+            mock_resp = MagicMock()
+            mock_resp.is_success = True
+            mock_resp.status_code = 200
+            p = params.get("page") if params else 1
+            if p == 1:
+                mock_resp.json.return_value = [{"id": i, "name": f"Airing {i}", "image": {"original": "poster.jpg"}} for i in range(1, 25)]
+            else:
+                mock_resp.json.return_value = []  # Page 2 empty!
+            return mock_resp
+
+        with patch("services.shikimori._get", new=AsyncMock(side_effect=_mock_get_3b)):
+            items, has_more, _ = await shikimori.top_anime_page(filter_="airing", limit=24, page=1)
+            self.assertEqual(len(items), 24)
+            self.assertFalse(has_more, "has_more must be False when probe of next page returns empty list")
+
+    async def test_shikimori_top_anime_page_probe_error_does_not_cut_off_catalog(self):
+        """Case 4: Probe error/timeout on next page must NOT cut off catalog (optimistic has_more=True)."""
+        import httpx
+        from services import shikimori
+        from unittest.mock import MagicMock
+
+        def _mock_get(url, params=None, timeout=None, max_retries=1):
+            p = params.get("page") if params else 1
+            if p == 1:
+                mock_resp = MagicMock()
+                mock_resp.is_success = True
+                mock_resp.status_code = 200
+                mock_resp.json.return_value = [{"id": i, "name": f"Airing {i}", "image": {"original": "poster.jpg"}} for i in range(1, 25)]
+                return mock_resp
+            else:
+                # Probe times out or crashes
+                raise httpx.ConnectTimeout("Next page probe timeout")
+
+        with patch("services.shikimori._get", new=AsyncMock(side_effect=_mock_get)):
+            items, has_more, _ = await shikimori.top_anime_page(filter_="airing", limit=24, page=1)
+            self.assertEqual(len(items), 24)
+            self.assertTrue(has_more, "has_more must remain True when next-page probe times out/errors")
+
+    async def test_shikimori_top_anime_page_empty_after_filter_not_end_of_catalog(self):
+        """Case 5: Empty page after local filtering does not falsely report end of catalog."""
+        from services import aggregator, shikimori
+        from unittest.mock import MagicMock
+
+        # Page 1: 24 raw items, but ALL have missing posters
+        raw_page_1 = [
+            {"id": i, "name": f"Airing {i}", "image": {"original": "missing_poster.jpg"}}
+            for i in range(1, 25)
+        ]
+        raw_page_2 = [
+            {"id": i, "name": f"Airing {i}", "image": {"original": "valid_poster.jpg"}}
+            for i in range(25, 49)
+        ]
+
+        def _mock_get(url, params=None, timeout=None, max_retries=1):
+            mock_resp = MagicMock()
+            mock_resp.is_success = True
+            mock_resp.status_code = 200
+            p = params.get("page") if params else 1
+            if p == 1:
+                mock_resp.json.return_value = raw_page_1
+            else:
+                mock_resp.json.return_value = raw_page_2
+            return mock_resp
+
+        with patch("services.shikimori._get", new=AsyncMock(side_effect=_mock_get)):
+            items, has_more, _ = await shikimori.top_anime_page(filter_="airing", limit=24, page=1)
+            self.assertEqual(len(items), 0, "All items filtered out locally")
+            self.assertTrue(has_more, "has_more must be True because upstream page was full and page 2 exists")
+
+            # Check aggregator level
+            res = await aggregator.get_category_page(category="airing", page=1, limit=24)
+            self.assertEqual(res["items"], [])
+            self.assertTrue(res["has_more"], "Aggregator must preserve has_more=True despite empty valid items")
+            self.assertEqual(res["source"], "shikimori")
+
+    async def test_jikan_top_anime_page_authoritative_pagination(self):
+        """Case 6: Jikan uses authoritative pagination.has_next_page, not local valid items count."""
+        from services import jikan
+        from unittest.mock import MagicMock
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {
+            "pagination": {
+                "has_next_page": True,
+                "current_page": 1,
+                "items": {"count": 18, "total": 500, "per_page": 24},
+            },
+            # 18 valid items
+            "data": [{"mal_id": i, "title": f"Anime {i}", "score": 8.0} for i in range(1, 19)],
+        }
+
+        with patch("services.jikan._get_with_retry", new=AsyncMock(return_value=mock_resp)):
+            items, has_more, total = await jikan.top_anime_page(filter_="airing", limit=24, page=1)
+            self.assertEqual(len(items), 18)
+            self.assertTrue(has_more, "has_more must follow pagination.has_next_page=True")
+            self.assertEqual(total, 500)
+
+    async def test_top_anime_does_not_probe_next_page(self):
+        """Verify top_anime (used by feed) calls Shikimori exactly once without page+1 probe."""
+        from services import shikimori
+        from unittest.mock import MagicMock
+
+        calls = []
+        def _mock_get(url, params=None, timeout=None, max_retries=1):
+            calls.append(params.get("page") if params else 1)
+            mock_resp = MagicMock()
+            mock_resp.is_success = True
+            mock_resp.status_code = 200
+            # Return full page of 10 items
+            mock_resp.json.return_value = [
+                {"id": i, "name": f"Anime {i}", "image": {"original": "poster.jpg"}}
+                for i in range(1, 11)
+            ]
+            return mock_resp
+
+        with patch("services.shikimori._get", new=AsyncMock(side_effect=_mock_get)):
+            # 1. top_anime() should ONLY fetch page 1, never probe page 2
+            items = await shikimori.top_anime(filter_="airing", limit=10, page=1)
+            self.assertEqual(len(items), 10)
+            self.assertEqual(calls, [1], "top_anime must make exactly 1 call without probing page+1")
+
+            # 2. In contrast, top_anime_page(probe_next=True) should make 2 calls (page 1 + probe page 2)
+            calls.clear()
+            items_page, has_more, _ = await shikimori.top_anime_page(filter_="airing", limit=10, page=1, probe_next=True)
+            self.assertEqual(len(items_page), 10)
+            self.assertEqual(calls, [1, 2], "top_anime_page must probe page+1 when probe_next=True")
 
 
 if __name__ == "__main__":

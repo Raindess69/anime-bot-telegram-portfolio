@@ -161,6 +161,16 @@ async def top_anime(
     limit: int = 10,
     page: int = 1,
 ) -> list[dict]:
+    items, _, _ = await top_anime_page(filter_=filter_, type_=type_, limit=limit, page=page)
+    return items
+
+
+async def top_anime_page(
+    filter_: str | None = None,
+    type_: str | None = None,
+    limit: int = 24,
+    page: int = 1,
+) -> tuple[list[dict], bool, int | None]:
     params: dict[str, str | int] = {"limit": limit, "page": page, "sfw": "true"}
     if filter_ and filter_ in VALID_TOP_FILTERS:
         params["filter"] = filter_
@@ -168,9 +178,18 @@ async def top_anime(
         params["type"] = type_
     resp = await _get_with_retry(f"{BASE_URL}/top/anime", params=params)
     if resp is None:
-        return []
-    data = resp.json().get("data", [])
-    return [_parse_item(x) for x in data if x]
+        return [], False, None
+    body = resp.json() or {}
+    data = body.get("data", [])
+    pagination = body.get("pagination") or {}
+    raw_has_more = pagination.get("has_next_page")
+    if raw_has_more is not None:
+        has_more = bool(raw_has_more)
+    else:
+        has_more = len(data) >= limit
+    total = (pagination.get("items") or {}).get("total")
+    items = [_parse_item(x) for x in data if x]
+    return items, has_more, total
 
 
 async def seasonal(year: int, season: str, limit: int = 10) -> list[dict]:
